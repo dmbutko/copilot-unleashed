@@ -1,0 +1,20 @@
+# Remote-access overrides for the app service.
+#
+# Apply together with docker-compose.yml when running the remote profile:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.remote.yml \
+#     --profile remote up -d --build
+#
+# Switches the app from development mode to production mode, and enables
+# reverse-proxy trust so the X-Forwarded-For / X-Forwarded-Proto headers
+# sent by Tailscale Serve are honoured for rate-limiting and secure cookies.
+
+services:
+  app:
+    environment:
+      - NODE_ENV=production
+      # BASE_URL must be the full HTTPS URL of your Tailscale hostname.
+      # Set this in your .env file — compose reads it from there.
+      # Example: BASE_URL=https://copilot-unleashed.tail1234.ts.net
+      - BASE_URL=${BASE_URL:-https://copilot-unleashed.example.ts.net}
+      - TRUST_PROXY=1

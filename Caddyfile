@@ -1,0 +1,52 @@
+# Caddyfile — optional advanced Caddy reverse proxy for Copilot Unleashed
+#
+# The default remote-access setup uses Tailscale Serve for TLS termination
+# (see docs/REMOTE-ACCESS.md). This file is provided for advanced users who
+# want Caddy as an additional HTTP-layer proxy (e.g. custom headers, auth,
+# path rewrites).
+#
+# Advanced usage with Caddy:
+#   1. Set TS_DOMAIN to your full Tailscale FQDN in .env
+#   2. Provision a TLS cert inside the Tailscale container:
+#        docker compose --profile remote exec tailscale \
+#          tailscale cert \
+#            --cert-file=/certs/server.crt \
+#            --key-file=/certs/server.key \
+#            "$TS_DOMAIN"
+#   3. Mount /certs and this Caddyfile into a caddy:2-alpine service and
+#      adjust the domain/cert paths below to match your TS_DOMAIN.
+#
+# For most users the default Tailscale Serve setup is sufficient.
+
+{
+  # Admin API on localhost only (used for health checks)
+  admin 0.0.0.0:2019
+  # TLS managed externally via Tailscale-provisioned certs
+  auto_https off
+}
+
+# Replace copilot-unleashed.tail1234.ts.net with your actual TS_DOMAIN value.
+https://copilot-unleashed.tail1234.ts.net {
+  # Use the TLS certificate provisioned by Tailscale.
+  # Run the tailscale cert command (see above) before starting Caddy.
+  tls /certs/server.crt /certs/server.key
+
+  # Forward real client IP for rate-limiting and logging.
+  header_up X-Forwarded-For {remote_host}
+  header_up X-Forwarded-Proto {scheme}
+
+  # WebSocket upgrade for /ws
+  @ws {
+    path /ws
+    header Connection *Upgrade*
+    header Upgrade websocket
+  }
+  reverse_proxy @ws app:3000 {
+    header_up Host {host}
+  }
+
+  # All other traffic proxied to the Node.js app.
+  reverse_proxy app:3000 {
+    header_up Host {host}
+  }
+}
