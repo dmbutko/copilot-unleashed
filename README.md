@@ -91,24 +91,13 @@ SESSION_SECRET=<random-32-byte-hex>            # Generate: openssl rand -hex 32
 > git fetch origin && git reset --hard origin/master
 > ```
 
-_Docker (recommended):_
-
 ```bash
 docker compose up --build
 ```
 
-_Local development (Node.js 24+):_
+> `npm run dev` is an alias for the command above.
 
-```bash
-npm install
-npm run dev
-```
-
-_Local production build:_
-
-```bash
-npm install && npm run build && npm start
-```
+Docker is **required** — the `@github/copilot` CLI is installed inside the container and is a runtime dependency of the SDK. The app will not function without it.
 
 Open [localhost:3000](http://localhost:3000). Log in with GitHub. Done.
 
