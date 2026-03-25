@@ -13,7 +13,7 @@ Self-hosted multi-model AI chat platform powered by the official `@github/copilo
 - **Real-time**: WebSocket via custom `server.js` entry, per-user `CopilotClient` lifecycle
 - **Auth**: GitHub Device Flow only (no client secret, no redirect URI)
 - **Session**: Express sessions bridged to SvelteKit via `x-session-id` header in `hooks.server.ts`
-- **Skills**: `skills/` directory with `SKILL.md` definitions, discovered server-side and passed to the SDK via `skillDirectories`
+- **Skills**: `.github/skills/` directory with `SKILL.md` definitions, discovered server-side and passed to the SDK via `skillDirectories`
 - **Settings**: Persisted server-side via `/api/settings` and mirrored in `localStorage`
 - **Deployment**: Docker container → Azure Container Apps via `azd up`
 
@@ -43,7 +43,7 @@ Self-hosted multi-model AI chat platform powered by the official `@github/copilo
 
 ```
 server.js                       # Custom entry: HTTP + express-session + WebSocket + SvelteKit handler
-skills/                         # SDK skill definitions (currently 1 skill)
+.github/skills/                 # SDK skill definitions (currently 1 skill)
 └── git-commit/SKILL.md         # Built-in git commit workflow skill
 tests/                          # Playwright E2E suites and helpers
 svelte.config.js                # SvelteKit config (adapter-node)
@@ -211,7 +211,7 @@ npx playwright test
 - Model defaults to `gpt-4.1` if not specified
 - Permission hooks: `approveAll` in autopilot mode, interactive prompts in other modes
 - Settings sync through `/api/settings`: authenticated users get a server-side source of truth, while the client mirrors sanitized data in `localStorage`
-- Skills are discovered from `skills/*/SKILL.md`, exposed via `/api/skills`, and passed into SDK sessions through `skillDirectories`
+- Skills are discovered from `.github/skills/*/SKILL.md`, exposed via `/api/skills`, and passed into SDK sessions through `skillDirectories`
 - Custom tools use webhook HTTP calls with SSRF protection
 - The SDK's `@github/copilot` CLI needs `node:sqlite` which ships with Node 24
 - Unit tests live next to source as `*.test.ts`; Playwright E2E suites live in `tests/`

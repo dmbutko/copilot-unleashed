@@ -34,7 +34,7 @@ COPY --from=builder /app/.github/copilot-instructions.md .github/copilot-instruc
 COPY --from=builder /app/.github/instructions/ .github/instructions/
 COPY --from=builder /app/.github/prompts/ .github/prompts/
 COPY --from=builder /app/.github/agents/ .github/agents/
-COPY --from=builder /app/skills/ skills/
+COPY --from=builder /app/.github/skills/ .github/skills/
 
 ENV NODE_ENV=production
 ENV PORT=3000

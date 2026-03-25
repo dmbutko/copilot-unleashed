@@ -75,7 +75,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const repoFilter = repo ? ` repo:${repo}` : '';
 		const searchQuery = query
 			? `${query}${repoFilter}`
-			: `is:issue is:open${repoFilter} sort:updated`;
+			: `is:open involves:@me${repoFilter} sort:updated`;
 
 		const apiUrl = new URL(`${GITHUB_API_URL}/search/issues`);
 		apiUrl.searchParams.set('q', searchQuery);

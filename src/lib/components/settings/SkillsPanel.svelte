@@ -76,32 +76,4 @@
     height: 16px;
     flex-shrink: 0;
   }
-  .skill-item {
-    padding: var(--sp-2) var(--sp-1);
-    border-bottom: 1px solid var(--border);
-  }
-  .skill-item:last-child {
-    border-bottom: none;
-  }
-  .skill-name {
-    font-size: 0.85em;
-    font-weight: 500;
-    color: var(--fg);
-  }
-  .skill-desc {
-    font-size: 0.75em;
-    color: var(--fg-dim);
-    margin: var(--sp-1) 0 0 calc(16px + var(--sp-2));
-    line-height: 1.4;
-  }
-  .skill-meta {
-    display: inline-block;
-    font-size: 0.7em;
-    color: var(--fg-dim);
-    margin-left: calc(16px + var(--sp-2));
-    margin-top: var(--sp-1);
-    padding: 1px 6px;
-    background: var(--bg-overlay);
-    border-radius: var(--radius-sm);
-  }
 </style>

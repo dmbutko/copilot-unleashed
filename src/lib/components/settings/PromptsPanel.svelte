@@ -70,17 +70,4 @@
   .prompt-item:last-child {
     border-bottom: none;
   }
-  .prompt-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-2);
-  }
-  .use-btn {
-    font-size: 0.75em;
-    padding: 2px 8px;
-    color: var(--green);
-    border-color: rgba(63, 185, 80, 0.3);
-    min-height: unset;
-  }
 </style>

@@ -32,7 +32,7 @@ let cachedSkills: SkillDefinition[] | null = null;
 export async function scanSkills(skillsRoot?: string): Promise<SkillDefinition[]> {
   if (cachedSkills) return cachedSkills;
 
-  const root = skillsRoot ?? resolve(process.cwd(), 'skills');
+  const root = skillsRoot ?? resolve(process.cwd(), '.github', 'skills');
   const skills: SkillDefinition[] = [];
 
   let entries: string[];
