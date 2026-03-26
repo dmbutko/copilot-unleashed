@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { pickPrimaryQuota, type QuotaSnapshots, type SessionUsageTotals } from '$lib/types/index.js';
-  import type { SessionSummary } from '$lib/types/sessions.js';
+  import { pickPrimaryQuota, type QuotaSnapshots, type SessionUsageTotals, type SessionSummary } from '$lib/types/index.js';
   import { SquarePen, History, Settings, LogOut, X, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
 
   interface Props {
