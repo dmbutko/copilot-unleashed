@@ -25,12 +25,15 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 	}
 
 	const { uploadId, filename } = params;
+	console.log(`[UPLOAD-GET] uploadId=${uploadId} filename=${filename}`);
 
 	if (!UUID_RE.test(uploadId)) {
+		console.log(`[UPLOAD-GET] Invalid uploadId: ${uploadId}`);
 		return error(400, 'Invalid upload ID');
 	}
 
 	if (!filename || !SAFE_FILENAME_RE.test(filename) || filename !== basename(filename)) {
+		console.log(`[UPLOAD-GET] Invalid filename: ${filename}, safe=${SAFE_FILENAME_RE.test(filename || '')}`);
 		return error(400, 'Invalid filename');
 	}
 
