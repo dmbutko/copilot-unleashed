@@ -219,7 +219,7 @@
 
     <!-- Sign out -->
     <div class="sidebar-section">
-      <button class="sidebar-action sidebar-action-danger" onclick={onLogout} title="Sign Out">
+      <button class="sidebar-action sidebar-action-danger" onclick={onLogout} title="Sign Out" aria-label="Sign Out">
         <LogOut size={18} />
         {#if !collapsed}<span>Sign Out</span>{/if}
       </button>
