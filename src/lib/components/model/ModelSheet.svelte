@@ -361,7 +361,7 @@
     font-weight: 500;
   }
 
-  /* ── Desktop: dropdown popover ─────────────────────────────────── */
+  /* ── Desktop: centered modal ──────────────────────────────────── */
   @media (min-width: 1024px) {
     .sheet-overlay {
       position: fixed;
@@ -370,17 +370,17 @@
       bottom: 0;
       left: var(--sidebar-width, 0px);
       z-index: 95;
-      background: transparent;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
       display: flex;
+      align-items: center;
       justify-content: center;
-      align-items: flex-start;
     }
 
     .sheet-panel {
       position: relative;
-      margin-top: 56px;
-      width: 320px;
-      max-width: 320px;
+      width: 400px;
+      max-width: 400px;
       max-height: min(600px, 70vh);
       flex: none;
       background: var(--bg-raised);
@@ -388,12 +388,7 @@
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-lg);
       overflow: hidden;
-      animation: dropIn 0.15s ease;
-    }
-
-    @keyframes dropIn {
-      from { opacity: 0; transform: translateY(-8px); }
-      to { opacity: 1; transform: translateY(0); }
+      animation: fadeIn 0.15s ease;
     }
 
     .sheet-header {
@@ -402,7 +397,6 @@
 
     .sheet-body {
       padding-bottom: var(--sp-3);
-      max-height: calc(min(600px, 70vh) - 52px);
     }
   }
 </style>

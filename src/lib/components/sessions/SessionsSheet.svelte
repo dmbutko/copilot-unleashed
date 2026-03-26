@@ -292,19 +292,26 @@
     animation: fadeIn 0.15s ease;
   }
 
-  /* On desktop, sessions are inline in sidebar — hide sheet overlay */
+  /* On desktop, same centered modal pattern as settings */
   @media (min-width: 1024px) {
     .sheet-overlay {
+      left: var(--sidebar-width, 0px);
       background: rgba(0, 0, 0, 0.5);
-      backdrop-filter: blur(2px);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .sheet-panel {
-      margin-top: 48px;
-      max-height: calc(100dvh - 96px);
+      max-height: 80vh;
       border-radius: var(--radius-lg);
       border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
       background: var(--bg-raised);
       overflow: hidden;
+    }
+    .sheet-header {
+      padding-top: var(--sp-3);
     }
   }
 

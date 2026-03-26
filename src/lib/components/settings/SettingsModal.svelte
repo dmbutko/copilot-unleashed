@@ -296,6 +296,12 @@
     justify-content: center;
     animation: fadeIn 0.15s ease;
   }
+
+  @media (min-width: 1024px) {
+    .settings-overlay {
+      left: var(--sidebar-width, 0px);
+    }
+  }
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
