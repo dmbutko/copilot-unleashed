@@ -240,14 +240,20 @@
     display: flex;
     flex-direction: column;
     transform: translateX(-100%);
+    visibility: hidden;
     transition: transform var(--duration-normal) var(--ease-default),
-                width var(--duration-normal) var(--ease-default);
+                width var(--duration-normal) var(--ease-default),
+                visibility 0s var(--duration-normal);
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
 
   .sidebar.open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--duration-normal) var(--ease-default),
+                width var(--duration-normal) var(--ease-default),
+                visibility 0s;
   }
 
   .sidebar-backdrop {
@@ -463,6 +469,7 @@
     .sidebar {
       position: relative;
       transform: none;
+      visibility: visible;
       width: 280px;
       flex-shrink: 0;
     }
