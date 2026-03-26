@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown } from 'lucide-svelte';
+  import { Brain, ChevronDown } from 'lucide-svelte';
 
   interface Props {
     content: string;
@@ -20,7 +20,7 @@
 <div class="reasoning-block" class:collapsed>
   <button class="reasoning-header" onclick={toggle} type="button">
     <span class="reasoning-chevron"><ChevronDown size={14} /></span>
-    <span class="reasoning-icon" class:thinking={isStreaming}>💭</span>
+    <span class="reasoning-icon" class:thinking={isStreaming}><Brain size={14} /></span>
     <span>{headerLabel}</span>
   </button>
   <div class="reasoning-content">{content}</div>
@@ -58,9 +58,8 @@
   }
 
   .reasoning-icon {
-    display: inline-block;
+    display: inline-flex;
     color: var(--yellow);
-    font-size: 0.9em;
   }
 
   .reasoning-icon.thinking {
