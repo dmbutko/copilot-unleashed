@@ -25,7 +25,7 @@
   const modelFamilyColor = $derived.by(() => {
     if (!currentModel) return 'var(--fg-dim)';
     if (currentModel.startsWith('gpt-')) return 'var(--green)';
-    if (currentModel.startsWith('claude-')) return '#b07ee8';
+    if (currentModel.startsWith('claude-')) return 'var(--purple)';
     if (currentModel.startsWith('gemini-')) return 'var(--blue)';
     return 'var(--fg-dim)';
   });
