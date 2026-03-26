@@ -101,7 +101,16 @@
         {#each imageAttachments as img (img.name)}
           <li class="attachment-item">
             <a href={img.url} target="_blank" rel="noopener noreferrer" class="thumb-link">
-              <img src={img.url} alt={img.name} class="thumb" loading="lazy" />
+              <img
+                src={img.url}
+                alt={img.name}
+                class="thumb"
+                loading="lazy"
+                onerror={(e) => {
+                  console.error('[IMAGE] Failed to load:', img.url, img.name);
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
             </a>
           </li>
         {/each}

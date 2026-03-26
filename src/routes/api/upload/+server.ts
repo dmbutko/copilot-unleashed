@@ -21,8 +21,8 @@ const ALLOWED_EXTENSIONS = new Set([
 
 function sanitizeFilename(raw: string): string {
 	const name = basename(raw);
-	// Strip path traversal characters
-	return name.replace(/[/\\:*?"<>|]/g, '_');
+	// Keep only characters allowed by the GET endpoint's SAFE_FILENAME_RE
+	return name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function getExtension(filename: string): string {

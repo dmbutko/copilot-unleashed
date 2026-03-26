@@ -20,6 +20,40 @@
   let fileInputEl: HTMLInputElement | undefined = $state();
   let cameraInputEl: HTMLInputElement | undefined = $state();
 
+  // Cache blob URLs by File object to avoid re-creating on every render
+  const blobUrlCache = new Map<File, string>();
+
+  function getBlobUrl(file: File): string {
+    let url = blobUrlCache.get(file);
+    if (!url) {
+      url = URL.createObjectURL(file);
+      blobUrlCache.set(file, url);
+    }
+    return url;
+  }
+
+  // Clean up blob URLs when files are removed
+  $effect(() => {
+    const currentFiles = new Set(selectedFiles);
+    // Revoke URLs for files that are no longer selected
+    for (const [file, url] of blobUrlCache) {
+      if (!currentFiles.has(file)) {
+        URL.revokeObjectURL(url);
+        blobUrlCache.delete(file);
+      }
+    }
+  });
+
+  // Clean up all blob URLs on component unmount
+  $effect(() => {
+    return () => {
+      for (const url of blobUrlCache.values()) {
+        URL.revokeObjectURL(url);
+      }
+      blobUrlCache.clear();
+    };
+  });
+
   const hasImageAttachments = $derived(
     checkImageAttachments(selectedFiles),
   );
@@ -112,9 +146,8 @@
         {#if isImageFile(file)}
           <img
             class="file-chip-thumb"
-            src={URL.createObjectURL(file)}
+            src={getBlobUrl(file)}
             alt={file.name}
-            onload={(e) => URL.revokeObjectURL((e.currentTarget as HTMLImageElement).src)}
           />
         {:else}
           <span class="file-chip-icon" aria-hidden="true"><FileText size={14} /></span>
