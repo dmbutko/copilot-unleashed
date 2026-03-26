@@ -242,6 +242,8 @@ Device Flow OAuth (same as GitHub CLI). Tokens are server-side only, never sent 
 <details>
 <summary><strong>Screenshots</strong></summary>
 
+<br>
+
 **Desktop**
 
 <table>
@@ -263,7 +265,24 @@ Device Flow OAuth (same as GitHub CLI). Tokens are server-side only, never sent 
 </tr>
 </table>
 
-**Mobile & Tablet**
+**Tablet (iPad)**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/usecase-autopilot-ipad.png" width="320" alt="Autopilot agent on tablet"></td>
+<td><img src="docs/screenshots/usecase-code-ipad.png" width="320" alt="Code generation on tablet"></td>
+<td><img src="docs/screenshots/usecase-reasoning-ipad.png" width="320" alt="Extended reasoning on tablet"></td>
+<td><img src="docs/screenshots/login-ipad.png" width="320" alt="Login on tablet"></td>
+</tr>
+<tr>
+<td align="center"><em>Autopilot</em></td>
+<td align="center"><em>Code gen</em></td>
+<td align="center"><em>Reasoning</em></td>
+<td align="center"><em>Login</em></td>
+</tr>
+</table>
+
+**Mobile**
 
 <table>
 <tr>
