@@ -4,10 +4,11 @@
   interface Props {
     tools: ToolInfo[];
     excludedTools: string[];
+    loading?: boolean;
     onToggleTool: (toolName: string, enabled: boolean) => void;
   }
 
-  const { tools, excludedTools, onToggleTool }: Props = $props();
+  const { tools, excludedTools, loading = false, onToggleTool }: Props = $props();
 
   const groupedTools = $derived.by(() => {
     const groups = new Map<string, ToolInfo[]>();
@@ -30,7 +31,13 @@
   }
 </script>
 
-{#if tools.length === 0}
+{#if loading}
+  <div class="skeleton-list">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
+{:else if tools.length === 0}
   <p class="settings-hint">No tools available.</p>
 {:else}
   {#each [...groupedTools.entries()] as [server, serverTools] (server)}
@@ -63,6 +70,16 @@
     color: var(--fg-dim);
     margin-bottom: var(--sp-2);
     line-height: 1.5;
+  }
+  .skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0;
+  }
+  .skeleton-row {
+    height: 28px;
+    width: 100%;
   }
   .tools-group {
     margin-bottom: var(--sp-3);

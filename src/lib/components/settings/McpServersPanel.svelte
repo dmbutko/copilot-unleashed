@@ -5,9 +5,10 @@
   interface Props {
     discoveredMcpServers: SourcedMcpServerInfo[];
     tools: ToolInfo[];
+    loading?: boolean;
   }
 
-  const { discoveredMcpServers, tools }: Props = $props();
+  const { discoveredMcpServers, tools, loading = false }: Props = $props();
 
   const groupedTools = $derived.by(() => {
     const groups = new Map<string, ToolInfo[]>();
@@ -38,7 +39,12 @@
 </div>
 
 <!-- SDK-discovered servers (from mcp-config.json / CLI) -->
-{#if discoveredMcpServers.length > 0}
+{#if loading}
+  <div class="skeleton-list">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
+{:else if discoveredMcpServers.length > 0}
   {#each discoveredMcpServers as server (server.name)}
     {@const sessionTools = getMcpTools(server.name)}
     <div class="mcp-server-item">
@@ -88,6 +94,16 @@
     color: var(--fg-dim);
     margin-bottom: var(--sp-2);
     line-height: 1.5;
+  }
+  .skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0;
+  }
+  .skeleton-row {
+    height: 48px;
+    width: 100%;
   }
   .tool-toggle-desc {
     font-size: 0.72em;

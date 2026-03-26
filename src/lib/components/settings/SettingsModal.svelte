@@ -83,6 +83,16 @@
   type AccordionSection = 'instructions' | 'tools' | 'mcp' | 'agents' | 'skills' | 'quota' | 'notifications' | 'compact' | 'prompts' | null;
 
   let activeSection = $state<AccordionSection>(null);
+  let toolsLoading = $state(false);
+  let agentsLoading = $state(false);
+  let skillsLoading = $state(false);
+  let mcpLoading = $state(false);
+
+  // Clear loading when data arrives from the server (props change = server responded)
+  $effect(() => { void tools.length; toolsLoading = false; });
+  $effect(() => { void agents.length; agentsLoading = false; });
+  $effect(() => { void availableSkills.length; skillsLoading = false; });
+  $effect(() => { void discoveredMcpServers.length; mcpLoading = false; });
 
   function toggleSection(section: AccordionSection) {
     if (activeSection === section) {
@@ -91,11 +101,21 @@
     }
     activeSection = section;
 
-    if (section === 'tools') onFetchTools();
-    if (section === 'agents') onFetchAgents();
+    if (section === 'tools') {
+      if (tools.length === 0) toolsLoading = true;
+      onFetchTools();
+    }
+    if (section === 'agents') {
+      if (agents.length === 0) agentsLoading = true;
+      onFetchAgents();
+    }
     if (section === 'quota') onFetchQuota();
-    if (section === 'skills') onFetchSkills();
+    if (section === 'skills') {
+      if (availableSkills.length === 0) skillsLoading = true;
+      onFetchSkills();
+    }
     if (section === 'mcp') {
+      if (discoveredMcpServers.length === 0) mcpLoading = true;
       onFetchMcpServers();
       onFetchTools();
     }
@@ -156,7 +176,7 @@
           </button>
           {#if activeSection === 'tools'}
             <div class="settings-accordion-body">
-              <ToolsPanel {tools} {excludedTools} {onToggleTool} />
+              <ToolsPanel {tools} {excludedTools} {onToggleTool} loading={toolsLoading} />
             </div>
           {/if}
         </div>
@@ -173,7 +193,7 @@
           </button>
           {#if activeSection === 'mcp'}
             <div class="settings-accordion-body">
-              <McpServersPanel {discoveredMcpServers} {tools} />
+              <McpServersPanel {discoveredMcpServers} {tools} loading={mcpLoading} />
             </div>
           {/if}
         </div>
@@ -190,7 +210,7 @@
           </button>
           {#if activeSection === 'agents'}
             <div class="settings-accordion-body">
-              <AgentsPanel {agents} {onSelectAgent} {onDeselectAgent} />
+              <AgentsPanel {agents} {onSelectAgent} {onDeselectAgent} loading={agentsLoading} />
             </div>
           {/if}
         </div>
@@ -207,7 +227,7 @@
           </button>
           {#if activeSection === 'skills'}
             <div class="settings-accordion-body">
-              <SkillsPanel {availableSkills} {onToggleSkill} />
+              <SkillsPanel {availableSkills} {onToggleSkill} loading={skillsLoading} />
             </div>
           {/if}
         </div>

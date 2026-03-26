@@ -5,11 +5,12 @@
 
   interface Props {
     agents: SourcedAgentInfo[];
+    loading?: boolean;
     onSelectAgent: (name: string) => void;
     onDeselectAgent: () => void;
   }
 
-  const { agents, onSelectAgent, onDeselectAgent }: Props = $props();
+  const { agents, loading = false, onSelectAgent, onDeselectAgent }: Props = $props();
 
   function handleAgentClick(name: string) {
     const agent = agents.find(a => a.name === name);
@@ -24,7 +25,13 @@
 <p class="settings-hint">
   Click an agent to activate it for the current session. The model will use the agent's system prompt for all subsequent messages. Click again to deactivate.
 </p>
-{#if agents.length === 0}
+{#if loading}
+  <div class="skeleton-list">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
+{:else if agents.length === 0}
   <p class="settings-hint">No agents found. Add <code>.agent.md</code> files to <code>~/.copilot/agents/</code>.</p>
 {:else}
   {#each [...groupBySource(agents).entries()] as [source, items] (source)}
@@ -56,6 +63,16 @@
     color: var(--fg-dim);
     margin-bottom: var(--sp-2);
     line-height: 1.5;
+  }
+  .skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0;
+  }
+  .skeleton-row {
+    height: 36px;
+    width: 100%;
   }
   .source-group {
     margin-bottom: var(--sp-3);

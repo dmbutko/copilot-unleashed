@@ -4,16 +4,23 @@
 
   interface Props {
     availableSkills: Array<{ name: string; description?: string; source?: string; enabled?: boolean; license?: string }>;
+    loading?: boolean;
     onToggleSkill: (name: string, enabled: boolean) => void;
   }
 
-  const { availableSkills, onToggleSkill }: Props = $props();
+  const { availableSkills, loading = false, onToggleSkill }: Props = $props();
 </script>
 
 <p class="settings-hint">
   Skills are prompt modules discovered by the Copilot CLI. Toggle to enable or disable. The model invokes them automatically when relevant.
 </p>
-{#if availableSkills.length === 0}
+{#if loading}
+  <div class="skeleton-list">
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+    <div class="skeleton skeleton-row"></div>
+  </div>
+{:else if availableSkills.length === 0}
   <p class="settings-hint">No skills available. Start a session first.</p>
 {:else}
   {#each availableSkills as skill (skill.name)}
@@ -44,6 +51,16 @@
     color: var(--fg-dim);
     margin-bottom: var(--sp-2);
     line-height: 1.5;
+  }
+  .skeleton-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    padding: var(--sp-1) 0;
+  }
+  .skeleton-row {
+    height: 28px;
+    width: 100%;
   }
   .customization-item {
     padding: var(--sp-1) 0;

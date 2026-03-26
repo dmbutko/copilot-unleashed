@@ -243,12 +243,16 @@ export function createChatStore(wsStore: WsStore): ChatStore {
       case 'session_created':
         currentModel = msg.model;
         if (msg.sessionId) currentSessionId = msg.sessionId;
+        wsStore.getQuota();
+        wsStore.listSessions();
         break;
 
       case 'session_reconnected':
         if (msg.hasSession) {
           addInfoMessage('Session reconnected');
         }
+        wsStore.getQuota();
+        wsStore.listSessions();
         break;
 
       case 'turn_start':
