@@ -11,6 +11,11 @@
 
 services:
   app:
+    # Restrict the host port to localhost so external devices cannot reach the
+    # app directly and spoof X-Forwarded-For to bypass rate limiting.
+    # All external traffic must go through the Tailscale sidecar.
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       - NODE_ENV=production
       # BASE_URL must be the full HTTPS URL of your Tailscale hostname.

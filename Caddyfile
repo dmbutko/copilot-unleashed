@@ -20,7 +20,7 @@
 
 {
   # Admin API on localhost only (used for health checks)
-  admin 0.0.0.0:2019
+  admin localhost:2019
   # TLS managed externally via Tailscale-provisioned certs
   auto_https off
 }
@@ -32,9 +32,6 @@ https://copilot-unleashed.tail1234.ts.net {
   tls /certs/server.crt /certs/server.key
 
   # Forward real client IP for rate-limiting and logging.
-  header_up X-Forwarded-For {remote_host}
-  header_up X-Forwarded-Proto {scheme}
-
   # WebSocket upgrade for /ws
   @ws {
     path /ws
@@ -43,10 +40,14 @@ https://copilot-unleashed.tail1234.ts.net {
   }
   reverse_proxy @ws app:3000 {
     header_up Host {host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
   }
 
   # All other traffic proxied to the Node.js app.
   reverse_proxy app:3000 {
     header_up Host {host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
   }
 }
