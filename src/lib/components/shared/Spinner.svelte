@@ -12,10 +12,7 @@
   role="status"
   aria-label="Loading"
   style:color={color}
->
-  <!-- Fallback glyph for non-animated or no-CSS environments -->
-  ⠋
-</span>
+></span>
 
 <style>
   .spinner {
