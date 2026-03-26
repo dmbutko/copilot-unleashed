@@ -118,7 +118,7 @@
 
   <div class="sidebar-body">
     <!-- New Chat CTA -->
-    <button class="new-chat-btn" onclick={onNewChat} title="New Chat">
+    <button class="new-chat-btn" onclick={onNewChat} title="New Chat" aria-label="New Chat">
       <SquarePen size={18} />
       {#if !collapsed}<span>New Chat</span>{/if}
     </button>
