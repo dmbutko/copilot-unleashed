@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { CopilotClient } from '@github/copilot-sdk';
 import type { SessionConfig, SystemPromptSection, SectionOverride, MCPServerConfig } from '@github/copilot-sdk';
@@ -137,11 +137,84 @@ interface McpOAuthTokens {
   scope: string;
 }
 
+interface McpOAuthConfig {
+  serverUrl: string;
+  authorizationServerUrl: string;
+  clientId: string;
+  redirectUri: string;
+  resourceUrl: string;
+  issuedAt: number;
+  isStatic: boolean;
+}
+
+/**
+ * Refreshes an expired OAuth token using the refresh_token grant.
+ * Writes the updated tokens back to the CLI's token store so both
+ * copilot-unleashed and the CLI stay in sync.
+ */
+async function refreshOAuthToken(
+  oauthConfig: McpOAuthConfig,
+  tokens: McpOAuthTokens,
+  tokensPath: string,
+): Promise<string | null> {
+  if (!tokens.refreshToken || !oauthConfig.clientId) return null;
+
+  // Derive token endpoint from authorization server URL
+  // authorizationServerUrl is e.g. "https://login.microsoftonline.com/organizations/v2.0"
+  const tokenUrl = oauthConfig.authorizationServerUrl.replace(/\/v2\.0\/?$/, '/oauth2/v2.0/token');
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: oauthConfig.clientId,
+      refresh_token: tokens.refreshToken,
+      scope: tokens.scope,
+    });
+
+    const response = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      redirect: 'manual',
+    });
+
+    if (!response.ok) {
+      console.warn(`[MCP] Token refresh failed (${response.status}) for ${oauthConfig.serverUrl}`);
+      return null;
+    }
+
+    const data = await response.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+      scope?: string;
+    };
+
+    const refreshed: McpOAuthTokens = {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || tokens.refreshToken,
+      expiresAt: Math.floor(Date.now() / 1000) + data.expires_in,
+      scope: data.scope || tokens.scope,
+    };
+
+    // Write back atomically so CLI stays in sync
+    const tmpPath = tokensPath + '.tmp';
+    await writeFile(tmpPath, JSON.stringify(refreshed), 'utf8');
+    await rename(tmpPath, tokensPath);
+
+    console.log(`[MCP] Refreshed OAuth token for ${oauthConfig.serverUrl.replace(/.*servers\//, '')}`);
+    return refreshed.accessToken;
+  } catch (err) {
+    console.warn(`[MCP] Token refresh error:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 /**
  * Reads M365 OAuth tokens managed by the Copilot CLI.
  * The CLI stores tokens in ~/.copilot/mcp-oauth-config/{SHA256(serverUrl)}.tokens.json
  * after the user authenticates via `copilot /mcp` → re-auth flow.
- * Returns the access token if valid, or a warning message if expired/missing.
+ * If the token is expired but a refresh token exists, attempts to refresh automatically.
  */
 async function loadCliOAuthToken(
   serverUrl: string,
@@ -149,6 +222,7 @@ async function loadCliOAuthToken(
 ): Promise<{ token?: string; expired?: boolean }> {
   const hash = createHash('sha256').update(serverUrl).digest('hex');
   const tokensPath = join(configDir, 'mcp-oauth-config', `${hash}.tokens.json`);
+  const configPath = join(configDir, 'mcp-oauth-config', `${hash}.json`);
 
   try {
     const raw = await readFile(tokensPath, 'utf8');
@@ -159,7 +233,19 @@ async function loadCliOAuthToken(
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
-    if (tokens.expiresAt && tokens.expiresAt <= nowSec) {
+    // Refresh 2 minutes before expiry to avoid edge-case failures
+    if (tokens.expiresAt && tokens.expiresAt <= nowSec + 120) {
+      // Attempt refresh
+      try {
+        const configRaw = await readFile(configPath, 'utf8');
+        const oauthConfig: McpOAuthConfig = JSON.parse(configRaw);
+        const refreshed = await refreshOAuthToken(oauthConfig, tokens, tokensPath);
+        if (refreshed) {
+          return { token: refreshed };
+        }
+      } catch {
+        // Config file missing or unreadable - can't refresh
+      }
       return { expired: true };
     }
 
@@ -190,7 +276,7 @@ async function injectOAuthHeaders(
 
     if (result.expired) {
       warnings.push(
-        `[MCP] OAuth token for "${name}" has expired. Run \`copilot\` CLI and use /mcp → re-auth to refresh.`,
+        `[MCP] OAuth token for "${name}" has expired and refresh failed. Initial CLI auth via \`copilot /mcp\` may be needed.`,
       );
       continue;
     }
