@@ -72,6 +72,10 @@
             To test this MCP, ask for one of these capabilities explicitly so the model has a clear reason to call it.
           </p>
         </div>
+      {:else if effectiveStatus === 'connected'}
+        <p class="settings-hint mcp-test-hint">
+          Connected and available to the model. Tools are managed by the SDK and will be called when relevant.
+        </p>
       {:else if effectiveStatus === 'failed'}
         <p class="settings-hint mcp-test-hint">
           This server is configured but failed to start, so it cannot expose tools to the current session yet.
