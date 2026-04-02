@@ -57,9 +57,7 @@
         {/if}
       </div>
       <div class="tool-toggle-desc">{server.url || server.command || 'CLI-configured'}</div>
-      {#if isAuthError}
-        <div class="tool-toggle-desc" style="color: var(--warning, #d29922)">Run <code>copilot</code> CLI and use /mcp to authenticate this server.</div>
-      {:else if server.error}
+      {#if !isAuthError && server.error}
         <div class="tool-toggle-desc" style="color: var(--danger)">{server.error}</div>
       {/if}
       {#if sessionTools.length > 0}
