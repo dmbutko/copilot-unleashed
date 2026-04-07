@@ -6,7 +6,7 @@
   "scripts": {
     "build:server": "tsc -p tsconfig.node.json",
     "build": "npm run build:server && vite build",
-    "start": "node server.js",
+    "start": "node --env-file=.env server.js",
     "dev": "docker compose up --build",
     "dev:down": "docker compose down",
     "build:check": "npm run build && node --env-file=.env server.js",

@@ -2,12 +2,18 @@ import { join } from 'node:path';
 import { approveAll } from '@github/copilot-sdk';
 import { createCopilotSession, buildSessionHooks, buildSessionMcpServers } from '../../copilot/session.js';
 import { getSessionDetail, buildSessionContext, isValidSessionId } from '../../copilot/session-metadata.js';
+import { loadSessionTurns } from '../../copilot/session-store-db.js';
+import { chatStateStore } from '../../chat-state-singleton.js';
 import { config } from '../../config.js';
 import { poolSend } from '../session-pool.js';
 import { VALID_MODES } from '../constants.js';
 import { wireSessionEvents, createCatchAllHandler, HANDLED_EVENT_TYPES } from '../session-events.js';
 import { makeUserInputHandler, makePermissionHandler } from '../permissions.js';
 import type { MessageContext } from '../types.js';
+
+function rawTabId(ctx: MessageContext): string {
+  return ctx.poolKey.split(':').slice(1).join(':');
+}
 
 export async function handleResumeSession(msg: any, ctx: MessageContext): Promise<void> {
   const { connectionEntry, githubToken } = ctx;
@@ -124,6 +130,36 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
       }
     } catch {
       // Non-critical: plan panel will stay hidden
+    }
+
+    // Load conversation history from session-store.db and send to browser
+    try {
+      const turns = loadSessionTurns(sessionId);
+      if (turns.length > 0) {
+        console.log(`[RESUME] Loaded ${turns.length} messages from session-store.db for ${sessionId}`);
+        poolSend(connectionEntry, {
+          type: 'cold_resume',
+          messages: turns,
+          model: msg.model || undefined,
+          mode: undefined,
+          sdkSessionId: sessionId,
+        });
+
+        // Persist to chat-state so subsequent reconnects don't hit the DB again
+        const tabId = rawTabId(ctx);
+        chatStateStore.save(ctx.userLogin, tabId, {
+          userId: ctx.userLogin,
+          tabId,
+          sdkSessionId: sessionId,
+          model: msg.model || 'gpt-4.1',
+          mode: 'interactive',
+          messages: turns as unknown as Array<Record<string, unknown>>,
+          createdAt: turns[0]?.timestamp || Date.now(),
+          updatedAt: turns[turns.length - 1]?.timestamp || Date.now(),
+        });
+      }
+    } catch (histErr: any) {
+      console.warn(`[RESUME] Failed to load session history: ${histErr.message}`);
     }
 
     poolSend(connectionEntry, { type: 'session_resumed', sessionId });

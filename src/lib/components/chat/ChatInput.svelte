@@ -277,9 +277,26 @@
 
   function extractFiles(dataTransfer: DataTransfer | null): File[] {
     if (!dataTransfer) return [];
-    return Array.from(dataTransfer.files).filter(
-      (f) => f.type.startsWith('image/') || f.type.startsWith('text/'),
-    );
+    // Clipboard paste exposes images via .items, not .files
+    const files: File[] = [];
+    if (dataTransfer.items) {
+      for (const item of Array.from(dataTransfer.items)) {
+        if (item.kind !== 'file') continue;
+        const file = item.getAsFile();
+        if (file && (file.type.startsWith('image/') || file.type.startsWith('text/'))) {
+          files.push(file);
+        }
+      }
+    }
+    // Drag-and-drop populates .files directly
+    if (files.length === 0) {
+      for (const file of Array.from(dataTransfer.files)) {
+        if (file.type.startsWith('image/') || file.type.startsWith('text/')) {
+          files.push(file);
+        }
+      }
+    }
+    return files;
   }
 
   function handlePaste(event: ClipboardEvent) {
