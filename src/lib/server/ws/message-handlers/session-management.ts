@@ -45,8 +45,11 @@ export async function handleListSessions(msg: any, ctx: MessageContext): Promise
 
     // Filter out sessions with no meaningful content — these are SDK-internal
     // empty sessions created at startup or after disconnects that were never used.
+    // Previously used cwd as a qualifying signal, but any non-Docker run
+    // (local, Windows, custom COPILOT_CONFIG_DIR) sets a real cwd on phantom
+    // sessions, letting them slip through.
     const list = allSessions.filter((s) =>
-      s.title || s.checkpointCount > 0 || s.hasPlan || (s.cwd && s.cwd !== '/home/node'),
+      s.title || s.checkpointCount > 0 || s.hasPlan,
     );
     console.log('[DEBUG list_sessions] Sending', list.length, 'total (SDK:', sdkSessions.length, '+ FS extra:', extraSessions.length, ', filtered out:', allSessions.length - list.length, ')');
 
