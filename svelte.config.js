@@ -9,6 +9,11 @@ const config = {
 		alias: {
 			$lib: 'src/lib',
 		},
+		csrf: {
+			// Allow localhost variants — custom CSRF origin check in hooks.server.ts
+			// handles production; this fixes 127.0.0.1 vs localhost mismatches in dev.
+			trustedOrigins: ['http://localhost:*', 'http://127.0.0.1:*'],
+		},
 	},
 };
 

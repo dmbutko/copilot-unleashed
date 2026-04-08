@@ -16,6 +16,10 @@ const tokenMaxAge = parseInt(process.env.TOKEN_MAX_AGE_MS || String(7 * 24 * 60 
 if (!process.env.ORIGIN) {
   process.env.ORIGIN = process.env.BASE_URL || `http://localhost:${port}`;
 }
+// Raise adapter-node body limit to match upload endpoint's 50MB cap (default is 512KB)
+if (!process.env.BODY_SIZE_LIMIT) {
+  process.env.BODY_SIZE_LIMIT = String(50 * 1024 * 1024);
+}
 const { handler } = await import('./build/handler.js');
 
 if (!isDev && !process.env.SESSION_SECRET) {
