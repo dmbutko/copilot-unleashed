@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
+import { debug } from '../logger.js';
 import { poolSend, isClientUnreachable, type PoolEntry } from './session-pool.js';
 import { normalizeQuotaSnapshots } from './quota.js';
 import { getSessionStateDir } from '../copilot/session-metadata.js';
@@ -25,9 +26,20 @@ export const HANDLED_EVENT_TYPES = new Set([
   'system.notification',
 ]);
 
+// High-frequency or SDK-internal events safe to silently ignore
+const SUPPRESSED_EVENT_TYPES = new Set([
+  'pending_messages.modified',
+  'assistant.streaming_delta',
+  'user.message',
+  'hook.start',
+  'hook.end',
+  'session.mcp_servers_loaded',
+  'session.tools_updated',
+]);
+
 export function createCatchAllHandler(entry: PoolEntry, handledTypes: Set<string>): (event: any) => void {
   return (event: any) => {
-    if (!handledTypes.has(event.type)) {
+    if (!handledTypes.has(event.type) && !SUPPRESSED_EVENT_TYPES.has(event.type)) {
       console.log('[EVENT] unhandled SDK event:', event.type, JSON.stringify(event.data ?? {}).slice(0, 200));
     }
   };
@@ -83,15 +95,15 @@ export function wireSessionEvents(
     pendingAssistantContent = '';
   });
   session.on('tool.execution_start', (event: any) => {
-    console.log('[TOOL] execution_start:', event.data.toolName, 'mcp:', event.data.mcpServerName, '/', event.data.mcpToolName);
+    debug('[TOOL] execution_start:', event.data.toolName, 'mcp:', event.data.mcpServerName, '/', event.data.mcpToolName);
     poolSend(entry, { type: 'tool_start', toolCallId: event.data.toolCallId, toolName: event.data.toolName, mcpServerName: event.data.mcpServerName, mcpToolName: event.data.mcpToolName });
   });
   session.on('tool.execution_complete', (event: any) => {
-    console.log('[TOOL] execution_complete:', event.data.toolCallId);
+    debug('[TOOL] execution_complete:', event.data.toolCallId);
     poolSend(entry, { type: 'tool_end', toolCallId: event.data.toolCallId });
   });
   session.on('tool.execution_progress', (event: any) => {
-    console.log('[TOOL] execution_progress:', event.data.toolCallId, event.data.message);
+    debug('[TOOL] execution_progress:', event.data.toolCallId, event.data.message);
     poolSend(entry, { type: 'tool_progress', toolCallId: event.data.toolCallId, message: event.data.message });
   });
   session.on('session.mode_changed', (event: any) => {

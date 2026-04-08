@@ -8,6 +8,7 @@ import { config } from '../../config.js';
 import { poolSend } from '../session-pool.js';
 import { VALID_MODES } from '../constants.js';
 import { wireSessionEvents, createCatchAllHandler, HANDLED_EVENT_TYPES } from '../session-events.js';
+import { debug } from '../../logger.js';
 import { makeUserInputHandler, makePermissionHandler } from '../permissions.js';
 import type { MessageContext } from '../types.js';
 
@@ -72,12 +73,12 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
       });
       resumed = true;
     } catch (resumeErr: any) {
-      console.log(`[RESUME] SDK resumeSession failed for ${sessionId}: ${resumeErr.message}`);
+      debug(`[RESUME] SDK resumeSession failed for ${sessionId}: ${resumeErr.message}`);
     }
 
     // Fallback: create a new session with context from the filesystem session
     if (!resumed) {
-      console.log(`[RESUME] Attempting context-based fallback for ${sessionId}…`);
+      debug(`[RESUME] Attempting context-based fallback for ${sessionId}…`);
       const context = await buildSessionContext(sessionId);
       if (!context) {
         throw new Error(`Session not found: ${sessionId}`);
@@ -91,7 +92,7 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
         onEvent,
         onHookEvent: (message) => poolSend(connectionEntry, message),
       });
-      console.log(`[RESUME] Fallback session created for ${sessionId} with context injection`);
+      debug(`[RESUME] Fallback session created for ${sessionId} with context injection`);
     }
 
     wireSessionEvents(connectionEntry.session, connectionEntry, sessionId, ctx.userLogin, ctx.poolKey.split(':').slice(1).join(':'));
@@ -118,7 +119,7 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
     if (detail?.plan) {
       try {
         await connectionEntry.session.rpc.plan.update({ content: detail.plan });
-        console.log(`[RESUME] Plan restored into SDK for session ${sessionId}`);
+        debug(`[RESUME] Plan restored into SDK for session ${sessionId}`);
       } catch (planErr: any) {
         console.warn(`[RESUME] Failed to restore plan into SDK: ${planErr.message}`);
       }
@@ -138,7 +139,7 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
     try {
       const turns = loadSessionTurns(sessionId);
       if (turns.length > 0) {
-        console.log(`[RESUME] Loaded ${turns.length} messages from session-store.db for ${sessionId}`);
+        debug(`[RESUME] Loaded ${turns.length} messages from session-store.db for ${sessionId}`);
         const resolvedModel = msg.model || 'gpt-4.1';
         poolSend(connectionEntry, {
           type: 'cold_resume',

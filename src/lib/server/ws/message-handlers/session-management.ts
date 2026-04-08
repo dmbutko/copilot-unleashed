@@ -1,19 +1,17 @@
 import { getAvailableModels } from '../../copilot/session.js';
 import { enrichSessionMetadata, getSessionDetail, listSessionsFromFilesystem, deleteSessionFromFilesystem, isValidSessionId } from '../../copilot/session-metadata.js';
 import { poolSend } from '../session-pool.js';
+import { debug } from '../../logger.js';
 import type { MessageContext } from '../types.js';
 
 export async function handleListSessions(msg: any, ctx: MessageContext): Promise<void> {
   const { connectionEntry } = ctx;
 
   try {
-    // start() is idempotent — no-op if already connected
-    console.log('[DEBUG list_sessions] Starting client…');
     await connectionEntry.client.start();
-    console.log('[DEBUG list_sessions] client.listSessions()…');
     const sessions = await connectionEntry.client.listSessions();
     const rawList = Array.isArray(sessions) ? sessions : [];
-    console.log('[DEBUG list_sessions] SDK returned', rawList.length, 'sessions');
+    debug('[LIST_SESSIONS] SDK returned', rawList.length, 'sessions');
 
     // Enrich each session with filesystem metadata in parallel
     const sdkSessions = await Promise.all(
@@ -36,9 +34,9 @@ export async function handleListSessions(msg: any, ctx: MessageContext): Promise
 
     // Merge with filesystem sessions the SDK may not know about
     // (e.g. bundled sessions copied into a fresh container)
-    console.log('[DEBUG list_sessions] Scanning filesystem…');
+    debug('[LIST_SESSIONS] Scanning filesystem…');
     const fsSessions = await listSessionsFromFilesystem();
-    console.log('[DEBUG list_sessions] Filesystem found', fsSessions.length, 'sessions');
+    debug('[LIST_SESSIONS] Filesystem found', fsSessions.length, 'sessions');
     const sdkIds = new Set(sdkSessions.map((s) => s.id));
     const extraSessions = fsSessions.filter((s) => !sdkIds.has(s.id)).map((s) => ({ ...s, source: 'filesystem' as const }));
     const allSessions = [...sdkSessions, ...extraSessions];
@@ -49,18 +47,18 @@ export async function handleListSessions(msg: any, ctx: MessageContext): Promise
     const list = allSessions.filter((s) =>
       s.title || s.checkpointCount > 0 || s.hasPlan,
     );
-    console.log('[DEBUG list_sessions] Sending', list.length, 'total (SDK:', sdkSessions.length, '+ FS extra:', extraSessions.length, ', filtered out:', allSessions.length - list.length, ')');
+    debug('[LIST_SESSIONS] Sending', list.length, 'total (SDK:', sdkSessions.length, '+ FS extra:', extraSessions.length, ', filtered out:', allSessions.length - list.length, ')');
 
     poolSend(connectionEntry, { type: 'sessions', sessions: list });
   } catch (err: any) {
-    console.error('[DEBUG list_sessions] SDK error:', err.message);
+    console.error('[LIST_SESSIONS] SDK error:', err.message);
     // SDK failed — fall back to filesystem-only listing
     try {
       const fsSessions = await listSessionsFromFilesystem();
-      console.log('[DEBUG list_sessions] Fallback: filesystem found', fsSessions.length, 'sessions');
+      debug('[LIST_SESSIONS] Fallback: filesystem found', fsSessions.length, 'sessions');
       poolSend(connectionEntry, { type: 'sessions', sessions: fsSessions.map((s) => ({ ...s, source: 'filesystem' as const })) });
     } catch (fsErr: any) {
-      console.error('[DEBUG list_sessions] Filesystem fallback also failed:', fsErr.message);
+      console.error('[LIST_SESSIONS] Filesystem fallback also failed:', fsErr.message);
       poolSend(connectionEntry, { type: 'sessions', sessions: [] });
     }
   }
@@ -109,9 +107,7 @@ export async function handleGetSessionDetail(msg: any, ctx: MessageContext): Pro
   const { connectionEntry } = ctx;
 
   const detailId = typeof msg.sessionId === 'string' ? msg.sessionId.trim() : '';
-  console.log('[DEBUG get_session_detail] Requested:', JSON.stringify(detailId));
   if (!detailId) {
-    console.log('[DEBUG get_session_detail] Empty ID, sending error');
     poolSend(connectionEntry, { type: 'error', message: 'Session ID is required' });
     return;
   }
@@ -121,17 +117,15 @@ export async function handleGetSessionDetail(msg: any, ctx: MessageContext): Pro
   }
 
   try {
-    console.log('[DEBUG get_session_detail] Calling getSessionDetail…');
     const detail = await getSessionDetail(detailId);
-    console.log('[DEBUG get_session_detail] Result:', detail ? `found (id=${detail.id})` : 'null');
+    debug('[SESSION_DETAIL] Result:', detail ? `found (id=${detail.id})` : 'null');
     if (!detail) {
       poolSend(connectionEntry, { type: 'error', message: 'Session not found' });
       return;
     }
     poolSend(connectionEntry, { type: 'session_detail', detail });
-    console.log('[DEBUG get_session_detail] Sent session_detail response');
   } catch (err: any) {
-    console.error('[DEBUG get_session_detail] Error:', err.message, err.stack);
+    console.error('[SESSION_DETAIL] Error:', err.message);
     poolSend(connectionEntry, { type: 'error', message: `Failed to get session detail: ${err.message}` });
   }
 }
