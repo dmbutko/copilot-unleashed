@@ -97,6 +97,14 @@ function isBlockedHostname(hostname: string): boolean {
   }
 }
 
+function safeServerLabel(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '[invalid-url]';
+  }
+}
+
 function validateOutboundUrl(kind: 'Tool' | 'MCP server' | 'MCP token endpoint', name: string, rawUrl: string): void {
   let url: URL;
   try {
@@ -167,7 +175,7 @@ async function refreshOAuthToken(
   try {
     validateOutboundUrl('MCP token endpoint', oauthConfig.serverUrl, tokenUrl);
   } catch (err) {
-    console.warn(`[MCP] Token refresh blocked (SSRF):`, err instanceof Error ? err.message : err);
+    console.warn(`[MCP] Token refresh blocked (SSRF check failed) for ${safeServerLabel(oauthConfig.serverUrl)}`);
     return null;
   }
 
@@ -187,7 +195,7 @@ async function refreshOAuthToken(
     });
 
     if (!response.ok) {
-      console.warn(`[MCP] Token refresh failed (${response.status}) for ${oauthConfig.serverUrl}`);
+      console.warn(`[MCP] Token refresh failed (${response.status}) for ${safeServerLabel(oauthConfig.serverUrl)}`);
       return null;
     }
 
@@ -210,7 +218,7 @@ async function refreshOAuthToken(
     await writeFile(tmpPath, JSON.stringify(refreshed), { encoding: 'utf8', mode: 0o600 });
     await rename(tmpPath, tokensPath);
 
-    console.log(`[MCP] Refreshed OAuth token for ${oauthConfig.serverUrl.replace(/.*servers\//, '')}`);
+    console.log(`[MCP] Refreshed OAuth token for ${safeServerLabel(oauthConfig.serverUrl)}`);
     return refreshed.accessToken;
   } catch (err) {
     console.warn(`[MCP] Token refresh error:`, err instanceof Error ? err.message : err);
