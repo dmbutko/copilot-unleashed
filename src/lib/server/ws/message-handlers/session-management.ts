@@ -45,8 +45,9 @@ export async function handleListSessions(msg: any, ctx: MessageContext): Promise
 
     // Filter out sessions with no meaningful content — these are SDK-internal
     // empty sessions created at startup or after disconnects that were never used.
+    // cwd is not a reliable signal: non-Docker runs set a real cwd on phantom sessions.
     const list = allSessions.filter((s) =>
-      s.title || s.checkpointCount > 0 || s.hasPlan || (s.cwd && s.cwd !== '/home/node'),
+      s.title || s.checkpointCount > 0 || s.hasPlan,
     );
     console.log('[DEBUG list_sessions] Sending', list.length, 'total (SDK:', sdkSessions.length, '+ FS extra:', extraSessions.length, ', filtered out:', allSessions.length - list.length, ')');
 

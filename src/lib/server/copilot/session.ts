@@ -97,7 +97,7 @@ function isBlockedHostname(hostname: string): boolean {
   }
 }
 
-function validateOutboundUrl(kind: 'Tool' | 'MCP server', name: string, rawUrl: string): void {
+function validateOutboundUrl(kind: 'Tool' | 'MCP server' | 'MCP token endpoint', name: string, rawUrl: string): void {
   let url: URL;
   try {
     url = new URL(rawUrl);
