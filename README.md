@@ -62,7 +62,7 @@ The app mirrors the Copilot SDK's native customization model. Configure once, us
 | **Skills** | Discovered by SDK | Toggle in Settings → model can invoke |
 | **Prompts** | `~/.copilot/prompts/*.prompt.md` | Type `/name` in chat → autocompletes |
 | **Instructions** | `~/.copilot/copilot-instructions.md` | Auto-discovered, shown in Settings |
-| **MCP Servers** | `~/.copilot/mcp-config.json` | Toggle in Settings → tools available |
+| **MCP Servers** | `~/.copilot/mcp-config.json` | Toggle in Settings → tools available; OAuth-authenticated servers auto-inject tokens from the CLI token store |
 
 > All paths also support repo-scoped variants (`.github/agents/`, `.github/prompts/`, `.github/instructions/`, `.github/mcp-config.json`).
 
@@ -186,7 +186,7 @@ npm run sync:push -- https://your-app.azurecontainerapps.io
 <details>
 <summary>How sync works, session bundling, and more</summary>
 
-The SDK stores each session as `~/.copilot/session-state/{uuid}/` with `workspace.yaml`, `plan.md`, and checkpoint files. When you resume a session from the browser, the SDK restores conversation history automatically. For disk-only sessions (e.g. bundled into Docker), the app falls back to reading checkpoint files directly and injecting them as context.
+The SDK stores each session as `~/.copilot/session-state/{uuid}/` with `workspace.yaml`, `plan.md`, and checkpoint files. When you resume a session from the browser, the SDK restores conversation history automatically — and if the CLI's `session-store.db` is available, full turn-by-turn history is loaded from it for a richer resume experience. For disk-only sessions (e.g. bundled into Docker), the app falls back to reading checkpoint files directly and injecting them as context.
 
 **Bundle sessions at build time** (Azure / CI):
 
@@ -227,7 +227,7 @@ Device Flow OAuth (same as GitHub CLI). Tokens are server-side only, never sent 
 - Rate limiting: 200 req / 15 min per IP (HTTP) + 30 msg / min per WebSocket
 - Secure cookies: httpOnly, secure (prod), sameSite: lax
 - DOMPurify on all rendered markdown
-- SSRF blocklist for MCP server URLs (IPv4 + IPv6 internal ranges, HTTPS required)
+- SSRF blocklist for MCP server URLs and OAuth token endpoints (IPv4 + IPv6 internal ranges, HTTPS required)
 - 10,000 char message limit, 10MB upload limit, extension allowlist
 - Per-tool permission prompts with 30s auto-deny countdown
 - Token revalidation on every WebSocket connect
