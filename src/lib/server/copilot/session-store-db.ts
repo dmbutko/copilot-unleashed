@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { config } from '../config.js';
+
+const esmRequire = createRequire(import.meta.url);
 
 interface SessionTurnRow {
   turn_index: number;
@@ -45,10 +48,9 @@ export function getSessionStoreDbPath(): string {
 /** Try to load DatabaseSync from node:sqlite. Returns null on older runtimes. */
 function getDatabaseSync(): SqliteConstructor | null {
   try {
-    // node:sqlite is experimental in Node 24 — dynamic require so the
-    // module still loads on older runtimes (callers get null).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('node:sqlite') as { DatabaseSync: SqliteConstructor };
+    // node:sqlite is experimental in Node 24 — dynamic require via createRequire
+    // because bare require() doesn't exist in ESM context.
+    const mod = esmRequire('node:sqlite') as { DatabaseSync: SqliteConstructor };
     return mod.DatabaseSync;
   } catch {
     return null;
