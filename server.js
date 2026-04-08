@@ -71,6 +71,24 @@ const server = createServer((req, res) => {
       return origEnd(...args);
     };
 
+    const origSetHeader = res.setHeader.bind(res);
+    res.setHeader = function (...args) {
+      if (!res.headersSent) return origSetHeader(...args);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[WARN] setHeader("${args[0]}") called after headers sent — ${req.method} ${req.url}`);
+      }
+      return res;
+    };
+
+    const origWriteHead = res.writeHead.bind(res);
+    res.writeHead = function (...args) {
+      if (!res.headersSent) return origWriteHead(...args);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[WARN] writeHead(${args[0]}) called after headers sent — ${req.method} ${req.url}`);
+      }
+      return res;
+    };
+
     handler(req, res);
   });
 });
