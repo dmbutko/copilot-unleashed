@@ -5,7 +5,7 @@ import { getSessionDetail, buildSessionContext, isValidSessionId } from '../../c
 import { loadSessionTurns } from '../../copilot/session-store-db.js';
 import { chatStateStore } from '../../chat-state-singleton.js';
 import { config } from '../../config.js';
-import { poolSend } from '../session-pool.js';
+import { poolSend, parkSession, unparkSession } from '../session-pool.js';
 import { VALID_MODES } from '../constants.js';
 import { wireSessionEvents, createCatchAllHandler, HANDLED_EVENT_TYPES } from '../session-events.js';
 import { debug } from '../../logger.js';
@@ -29,14 +29,29 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
     return;
   }
 
-  if (connectionEntry.session) {
-    try { await connectionEntry.session.disconnect(); } catch { /* ignore */ }
-    connectionEntry.session = null;
+  // Park the current session in the background instead of destroying it
+  const parked = parkSession(connectionEntry, githubToken);
+  if (parked) {
+    debug(`[RESUME] Parked session ${parked.sdkSessionId} in background (status: ${parked.status})`);
   }
-  connectionEntry.userInputResolve = null;
-  connectionEntry.permissionResolves.clear();
-  connectionEntry.pendingPermissionPrompts.clear();
-  connectionEntry.isProcessing = false;
+
+  // Check if the target session is already running in the background
+  const unparked = await unparkSession(connectionEntry, sessionId);
+  if (unparked !== null) {
+    debug(`[RESUME] Unparked background session ${sessionId} with ${unparked.length} buffered messages`);
+
+    // Tell client which model this session uses
+    if (connectionEntry.model) {
+      poolSend(connectionEntry, { type: 'model_changed', model: connectionEntry.model, source: 'unpark' });
+    }
+
+    // Replay buffered messages
+    for (const bufferedMsg of unparked) {
+      poolSend(connectionEntry, bufferedMsg);
+    }
+    poolSend(connectionEntry, { type: 'session_resumed', sessionId });
+    return;
+  }
 
   try {
     // start() is idempotent — ensures the SDK has indexed all local sessions

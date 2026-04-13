@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import type { CopilotClient } from '@github/copilot-sdk';
 import { config } from '../config.js';
+import { createCopilotClient } from '../copilot/client.js';
 
 const MAX_BUFFER_SIZE = 500;
 const TAB_ID_PATTERN = /^[a-z0-9_-]{1,64}$/i;
@@ -17,6 +18,21 @@ const CONTROL_MESSAGE_TYPES = new Set([
 
 /** Threshold for considering a client connection stale (no ping received). */
 export const CLIENT_STALE_MS = 35_000;
+
+/** Maximum background sessions per pool entry (tab). */
+const MAX_BACKGROUND_SESSIONS = 3;
+
+export type BackgroundSessionStatus = 'running' | 'completed' | 'errored';
+
+export interface BackgroundSession {
+  /** Self-contained pool entry with its own client+session and ws:null for buffering */
+  entry: PoolEntry;
+  sdkSessionId: string;
+  model: string | null;
+  title: string | null;
+  status: BackgroundSessionStatus;
+  parkedAt: number;
+}
 
 export interface PoolEntry {
   client: CopilotClient;
@@ -49,6 +65,8 @@ export interface PoolEntry {
   workspaceCwd: string | null;
   /** Latest git root reported by the SDK session */
   workspaceGitRoot: string | null;
+  /** Background sessions parked while user works in another session */
+  backgroundSessions: Map<string, BackgroundSession>;
 }
 
 export const sessionPool = new Map<string, PoolEntry>();
@@ -74,6 +92,7 @@ export function createPoolEntry(client: CopilotClient, ws: WebSocket): PoolEntry
     lastPingAt: Date.now(),
     workspaceCwd: null,
     workspaceGitRoot: null,
+    backgroundSessions: new Map(),
   };
 }
 
@@ -86,6 +105,12 @@ export async function destroyPoolEntry(entry: PoolEntry): Promise<void> {
     try { await entry.session.disconnect(); } catch { /* ignore */ }
     entry.session = null;
   }
+  // Clean up all background sessions
+  for (const bg of entry.backgroundSessions.values()) {
+    try { await bg.entry.session?.disconnect(); } catch { /* ignore */ }
+    try { await bg.entry.client.stop(); } catch { /* ignore */ }
+  }
+  entry.backgroundSessions.clear();
   entry.userInputResolve = null;
   entry.permissionResolves.clear();
   entry.pendingUserInputPrompt = null;
@@ -117,6 +142,196 @@ export function poolSend(entry: PoolEntry, data: Record<string, unknown>): void 
       }
     }
     entry.messageBuffer.push(seqData);
+  }
+}
+
+/**
+ * Park the current foreground session into the background.
+ * The old { client, session } pair moves to a background PoolEntry with ws:null,
+ * so the existing event handlers (which close over that entry) auto-buffer via poolSend.
+ * A new CopilotClient is created for the foreground.
+ */
+export function parkSession(
+  entry: PoolEntry,
+  githubToken: string,
+): BackgroundSession | null {
+  if (!entry.session) return null;
+
+  const sessionId = entry.sdkSessionId || entry.session?.sessionId;
+  if (!sessionId) {
+    // No session ID — can't park, just disconnect
+    try { entry.session.disconnect(); } catch { /* ignore */ }
+    entry.session = null;
+    entry.sdkSessionId = null;
+    entry.isProcessing = false;
+    return null;
+  }
+
+  // Create a background PoolEntry that owns the old client+session
+  // ws:null means poolSend will buffer all messages automatically
+  const bgEntry: PoolEntry = {
+    client: entry.client,
+    session: entry.session,
+    sdkSessionId: sessionId,
+    model: entry.model,
+    mode: entry.mode,
+    ws: null,
+    messageBuffer: [],
+    ttlTimer: null,
+    userInputResolve: entry.userInputResolve,
+    permissionResolves: entry.permissionResolves,
+    permissionPreferences: entry.permissionPreferences,
+    isProcessing: entry.isProcessing,
+    seq: 0,
+    pendingUserInputPrompt: entry.pendingUserInputPrompt,
+    pendingPermissionPrompts: entry.pendingPermissionPrompts,
+    reasoningEffort: entry.reasoningEffort,
+    lastPingAt: 0,
+    workspaceCwd: entry.workspaceCwd,
+    workspaceGitRoot: entry.workspaceGitRoot,
+    backgroundSessions: new Map(),
+  };
+
+  const bg: BackgroundSession = {
+    entry: bgEntry,
+    sdkSessionId: sessionId,
+    model: entry.model,
+    title: null,
+    status: entry.isProcessing ? 'running' : 'completed',
+    parkedAt: Date.now(),
+  };
+
+  entry.backgroundSessions.set(sessionId, bg);
+
+  // Create a fresh client for the foreground
+  entry.client = createCopilotClient(githubToken, config.copilotConfigDir);
+  entry.session = null;
+  entry.sdkSessionId = null;
+  entry.userInputResolve = null;
+  entry.permissionResolves = new Map();
+  entry.permissionPreferences = new Map();
+  entry.pendingUserInputPrompt = null;
+  entry.pendingPermissionPrompts = new Map();
+  entry.isProcessing = false;
+
+  // Evict oldest completed background sessions if over the cap
+  evictOldestBackground(entry);
+
+  // Wire status notifications: when background session completes/errors,
+  // notify the foreground WS
+  wireBackgroundStatusNotifications(entry, bg);
+
+  return bg;
+}
+
+/**
+ * Move a background session back to the foreground.
+ * Returns the buffered messages to replay, or null if not found.
+ */
+export async function unparkSession(
+  entry: PoolEntry,
+  sessionId: string,
+): Promise<Record<string, unknown>[] | null> {
+  const bg = entry.backgroundSessions.get(sessionId);
+  if (!bg) return null;
+
+  // Park the current foreground if there is one (but we don't have githubToken here
+  // so we just disconnect it - the caller should park first if needed)
+  if (entry.session) {
+    try { await entry.session.disconnect(); } catch { /* ignore */ }
+  }
+  // Stop the current foreground client
+  try { await entry.client.stop(); } catch { /* ignore */ }
+
+  // Swap the background entry's client+session back to foreground
+  entry.client = bg.entry.client;
+  entry.session = bg.entry.session;
+  entry.sdkSessionId = bg.sdkSessionId;
+  entry.model = bg.model;
+  entry.mode = bg.entry.mode;
+  entry.isProcessing = bg.status === 'running';
+
+  // Restore the WS reference so poolSend sends to the client again
+  bg.entry.ws = entry.ws;
+
+  const buffered = bg.entry.messageBuffer;
+  entry.backgroundSessions.delete(sessionId);
+  return buffered;
+}
+
+/** Wire event-based status notifications for a background session */
+function wireBackgroundStatusNotifications(foreground: PoolEntry, bg: BackgroundSession): void {
+  const session = bg.entry.session;
+  if (!session) return;
+
+  // Listen for terminal events to update status and notify foreground
+  session.on('assistant.turn_end', () => {
+    bg.status = 'completed';
+    sendBackgroundStatus(foreground, bg);
+  });
+  session.on('session.idle', () => {
+    bg.status = 'completed';
+    sendBackgroundStatus(foreground, bg);
+  });
+  session.on('session.task_complete', () => {
+    bg.status = 'completed';
+    sendBackgroundStatus(foreground, bg);
+  });
+  session.on('session.error', () => {
+    bg.status = 'errored';
+    sendBackgroundStatus(foreground, bg);
+  });
+  session.on('session.title_changed', (event: any) => {
+    bg.title = event.data?.title ?? bg.title;
+    sendBackgroundStatus(foreground, bg);
+  });
+  session.on('session.shutdown', () => {
+    foreground.backgroundSessions.delete(bg.sdkSessionId);
+    try { bg.entry.client.stop(); } catch { /* ignore */ }
+  });
+}
+
+/** Send a background_session_status message to the foreground WS */
+function sendBackgroundStatus(foreground: PoolEntry, bg: BackgroundSession): void {
+  poolSend(foreground, {
+    type: 'background_session_status',
+    sessionId: bg.sdkSessionId,
+    status: bg.status,
+    title: bg.title,
+    model: bg.model,
+    bufferedCount: bg.entry.messageBuffer.length,
+  });
+}
+
+/** Evict oldest completed background sessions to stay within the cap. */
+function evictOldestBackground(entry: PoolEntry): void {
+  while (entry.backgroundSessions.size > MAX_BACKGROUND_SESSIONS) {
+    let evictId: string | null = null;
+    let evictTime = Infinity;
+
+    // Prefer evicting completed/errored over running
+    for (const [id, bg] of entry.backgroundSessions) {
+      if (bg.status !== 'running' && bg.parkedAt < evictTime) {
+        evictId = id;
+        evictTime = bg.parkedAt;
+      }
+    }
+    if (!evictId) {
+      for (const [id, bg] of entry.backgroundSessions) {
+        if (bg.parkedAt < evictTime) {
+          evictId = id;
+          evictTime = bg.parkedAt;
+        }
+      }
+    }
+    if (!evictId) break;
+
+    const bg = entry.backgroundSessions.get(evictId);
+    if (bg) {
+      try { bg.entry.session?.disconnect(); } catch { /* ignore */ }
+      try { bg.entry.client.stop(); } catch { /* ignore */ }
+    }
+    entry.backgroundSessions.delete(evictId);
   }
 }
 

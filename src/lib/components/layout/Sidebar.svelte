@@ -1,5 +1,6 @@
 <script lang="ts">
   import { pickPrimaryQuota, type QuotaSnapshots, type SessionUsageTotals, type SessionSummary } from '$lib/types/index.js';
+  import type { BackgroundSessionInfo } from '$lib/stores/ws.svelte.js';
   import { SquarePen, History, Settings, LogOut, X, PanelLeftClose, PanelLeftOpen } from 'lucide-svelte';
 
   interface Props {
@@ -9,6 +10,7 @@
     quotaSnapshots: QuotaSnapshots | null;
     sessionTotals: SessionUsageTotals;
     sessions: SessionSummary[];
+    backgroundSessions: Map<string, BackgroundSessionInfo>;
     onClose: () => void;
     onNewChat: () => void;
     onOpenSessions: () => void;
@@ -25,6 +27,7 @@
     quotaSnapshots,
     sessionTotals,
     sessions,
+    backgroundSessions,
     onClose,
     onNewChat,
     onOpenSessions,
@@ -197,8 +200,17 @@
           <span class="sidebar-label">Recent Sessions</span>
           <div class="session-mini-list">
             {#each recentSessions as session (session.id)}
+              {@const bgInfo = backgroundSessions.get(session.id)}
               <button class="session-mini-item" onclick={() => onResumeSession(session.id)} title={session.title ?? session.id}>
-                <span class="session-mini-title">{session.title ?? session.id}</span>
+                <span class="session-mini-title">
+                  {#if bgInfo}
+                    <span class="bg-dot {bgInfo.status}"></span>
+                  {/if}
+                  {session.title ?? session.id}
+                  {#if bgInfo && bgInfo.status === 'completed' && bgInfo.bufferedCount > 0}
+                    <span class="bg-badge">{bgInfo.bufferedCount}</span>
+                  {/if}
+                </span>
                 {#if session.repository || session.updatedAt}
                   <span class="session-mini-meta">
                     {#if session.repository}<span>{session.repository}</span>{/if}
@@ -456,6 +468,38 @@
     gap: var(--sp-2);
     font-size: 0.8em;
     color: var(--fg-dim);
+  }
+
+  /* ── Background session indicators ────────────────────────────── */
+  .bg-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .bg-dot.running {
+    background: var(--yellow);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  .bg-dot.completed { background: var(--green); }
+  .bg-dot.errored { background: var(--red); }
+  .bg-badge {
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    background: var(--green);
+    color: var(--bg);
+    border-radius: 8px;
+    padding: 0 5px;
+    margin-left: 4px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 
   /* ── Mobile/Desktop visibility helpers ──────────────────────── */

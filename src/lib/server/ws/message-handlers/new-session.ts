@@ -2,11 +2,12 @@ import { createCopilotSession } from '../../copilot/session.js';
 import type { SystemPromptSection, SectionOverride } from '@github/copilot-sdk';
 import { getSkillDirectories } from '../../skills/scanner.js';
 import { config } from '../../config.js';
-import { poolSend } from '../session-pool.js';
+import { poolSend, parkSession } from '../session-pool.js';
 import { VALID_MODES } from '../constants.js';
 import { wireSessionEvents, createCatchAllHandler, HANDLED_EVENT_TYPES } from '../session-events.js';
 import { makeUserInputHandler, makePermissionHandler } from '../permissions.js';
 import { chatStateStore } from '../../chat-state-singleton.js';
+import { debug } from '../../logger.js';
 import type { MessageContext } from '../types.js';
 
 function rawTabId(ctx: MessageContext): string {
@@ -19,14 +20,14 @@ export async function handleNewSession(msg: any, ctx: MessageContext): Promise<v
   // Delete old persisted state before creating new session
   chatStateStore.delete(ctx.userLogin, rawTabId(ctx));
 
-  if (connectionEntry.session) {
-    try { await connectionEntry.session.disconnect(); } catch { /* ignore */ }
-    connectionEntry.session = null;
+  // Park the current session in the background instead of destroying it
+  const parked = parkSession(connectionEntry, githubToken);
+  if (parked) {
+    debug(`[NEW] Parked session ${parked.sdkSessionId} in background (status: ${parked.status})`);
+  } else if (connectionEntry.session) {
+    // parkSession returned null but session existed — it was disconnected as fallback
+    debug(`[NEW] Session disconnected (could not park)`);
   }
-  connectionEntry.userInputResolve = null;
-  connectionEntry.permissionResolves.clear();
-  connectionEntry.pendingUserInputPrompt = null;
-  connectionEntry.pendingPermissionPrompts.clear();
 
   try {
     const customInstructions = typeof msg.customInstructions === 'string'
