@@ -17,7 +17,8 @@ function rawTabId(ctx: MessageContext): string {
 }
 
 export async function handleResumeSession(msg: any, ctx: MessageContext): Promise<void> {
-  const { connectionEntry, githubToken } = ctx;
+  let { connectionEntry } = ctx;
+  const { githubToken } = ctx;
 
   const sessionId = typeof msg.sessionId === 'string' ? msg.sessionId.trim() : '';
   if (!sessionId) {
@@ -30,15 +31,17 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
   }
 
   // Park the current session in the background instead of destroying it
-  const parked = parkSession(connectionEntry, githubToken);
-  if (parked) {
-    debug(`[RESUME] Parked session ${parked.sdkSessionId} in background (status: ${parked.status})`);
+  const parkResult = parkSession(connectionEntry, githubToken, ctx.poolKey);
+  if (parkResult) {
+    connectionEntry = parkResult.newEntry;
+    debug(`[RESUME] Parked session ${parkResult.bgSession.sdkSessionId} in background (status: ${parkResult.bgSession.status})`);
   }
 
   // Check if the target session is already running in the background
-  const unparked = await unparkSession(connectionEntry, sessionId);
-  if (unparked !== null) {
-    debug(`[RESUME] Unparked background session ${sessionId} with ${unparked.length} buffered messages`);
+  const unparkResult = await unparkSession(connectionEntry, sessionId, ctx.poolKey);
+  if (unparkResult !== null) {
+    connectionEntry = unparkResult.newEntry;
+    debug(`[RESUME] Unparked background session ${sessionId} with ${unparkResult.buffered.length} buffered messages`);
 
     // Tell client which model this session uses
     if (connectionEntry.model) {
@@ -46,7 +49,7 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
     }
 
     // Replay buffered messages
-    for (const bufferedMsg of unparked) {
+    for (const bufferedMsg of unparkResult.buffered) {
       poolSend(connectionEntry, bufferedMsg);
     }
     poolSend(connectionEntry, { type: 'session_resumed', sessionId });

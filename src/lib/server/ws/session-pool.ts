@@ -147,14 +147,22 @@ export function poolSend(entry: PoolEntry, data: Record<string, unknown>): void 
 
 /**
  * Park the current foreground session into the background.
- * The old { client, session } pair moves to a background PoolEntry with ws:null,
- * so the existing event handlers (which close over that entry) auto-buffer via poolSend.
- * A new CopilotClient is created for the foreground.
+ *
+ * Key insight: wireSessionEvents() handlers close over the `entry` reference they
+ * were wired with.  We can't remove those listeners (SDK limitation) and we can't
+ * redirect them by mutating fields on a *different* object.  So instead of copying
+ * fields into a new bgEntry, we keep the ORIGINAL entry as-is (it becomes the
+ * background) and null its `ws` so poolSend auto-buffers.  A brand-new PoolEntry
+ * with a fresh CopilotClient takes over the foreground in the session pool.
+ *
+ * Returns the new foreground entry (caller must use it for subsequent operations)
+ * and the background session metadata.
  */
 export function parkSession(
   entry: PoolEntry,
   githubToken: string,
-): BackgroundSession | null {
+  poolKey: string,
+): { newEntry: PoolEntry; bgSession: BackgroundSession } | null {
   if (!entry.session) return null;
 
   const sessionId = entry.sdkSessionId || entry.session?.sessionId;
@@ -167,33 +175,24 @@ export function parkSession(
     return null;
   }
 
-  // Create a background PoolEntry that owns the old client+session
-  // ws:null means poolSend will buffer all messages automatically
-  const bgEntry: PoolEntry = {
-    client: entry.client,
-    session: entry.session,
-    sdkSessionId: sessionId,
-    model: entry.model,
-    mode: entry.mode,
-    ws: null,
-    messageBuffer: [],
-    ttlTimer: null,
-    userInputResolve: entry.userInputResolve,
-    permissionResolves: entry.permissionResolves,
-    permissionPreferences: entry.permissionPreferences,
-    isProcessing: entry.isProcessing,
-    seq: 0,
-    pendingUserInputPrompt: entry.pendingUserInputPrompt,
-    pendingPermissionPrompts: entry.pendingPermissionPrompts,
-    reasoningEffort: entry.reasoningEffort,
-    lastPingAt: 0,
-    workspaceCwd: entry.workspaceCwd,
-    workspaceGitRoot: entry.workspaceGitRoot,
-    backgroundSessions: new Map(),
-  };
+  // Save the WS reference before nulling it on the old entry
+  const ws = entry.ws;
+  if (!ws) {
+    // No active WS — just disconnect, can't park properly
+    try { entry.session.disconnect(); } catch { /* ignore */ }
+    entry.session = null;
+    entry.sdkSessionId = null;
+    entry.isProcessing = false;
+    return null;
+  }
 
+  // Null the WS on the ORIGINAL entry — its wired event handlers will now
+  // auto-buffer via poolSend(entry, ...) instead of sending to the WebSocket
+  entry.ws = null;
+
+  // The original entry IS the background session now
   const bg: BackgroundSession = {
-    entry: bgEntry,
+    entry,
     sdkSessionId: sessionId,
     model: entry.model,
     title: null,
@@ -201,92 +200,118 @@ export function parkSession(
     parkedAt: Date.now(),
   };
 
-  entry.backgroundSessions.set(sessionId, bg);
+  // Create a brand-new foreground entry with the saved WS + fresh client
+  const newEntry = createPoolEntry(
+    createCopilotClient(githubToken, config.copilotConfigDir),
+    ws,
+  );
 
-  // Create a fresh client for the foreground
-  entry.client = createCopilotClient(githubToken, config.copilotConfigDir);
-  entry.session = null;
-  entry.sdkSessionId = null;
-  entry.userInputResolve = null;
-  entry.permissionResolves = new Map();
-  entry.permissionPreferences = new Map();
-  entry.pendingUserInputPrompt = null;
-  entry.pendingPermissionPrompts = new Map();
-  entry.isProcessing = false;
+  // Transfer all existing background sessions from the old entry to the new one
+  for (const [id, bgSession] of entry.backgroundSessions) {
+    newEntry.backgroundSessions.set(id, bgSession);
+  }
+  entry.backgroundSessions = new Map();
+
+  // Register the old entry as a background session on the new foreground
+  newEntry.backgroundSessions.set(sessionId, bg);
+
+  // Replace the pool entry so subsequent WS messages use the new foreground
+  sessionPool.set(poolKey, newEntry);
 
   // Evict oldest completed background sessions if over the cap
-  evictOldestBackground(entry);
+  evictOldestBackground(newEntry);
 
-  // Wire status notifications: when background session completes/errors,
-  // notify the foreground WS
-  wireBackgroundStatusNotifications(entry, bg);
+  // Wire status notifications using poolKey lookup (survives further swaps)
+  wireBackgroundStatusNotifications(poolKey, bg);
 
-  return bg;
+  return { newEntry, bgSession: bg };
 }
 
 /**
  * Move a background session back to the foreground.
- * Returns the buffered messages to replay, or null if not found.
+ *
+ * The background session's original entry is restored as the pool entry.
+ * Its event handlers (which close over that entry) regain access to the WS.
+ * The current foreground entry's client is stopped.
+ *
+ * Returns the new foreground entry and buffered messages to replay.
  */
 export async function unparkSession(
   entry: PoolEntry,
   sessionId: string,
-): Promise<Record<string, unknown>[] | null> {
+  poolKey: string,
+): Promise<{ newEntry: PoolEntry; buffered: Record<string, unknown>[] } | null> {
   const bg = entry.backgroundSessions.get(sessionId);
   if (!bg) return null;
 
-  // Park the current foreground if there is one (but we don't have githubToken here
-  // so we just disconnect it - the caller should park first if needed)
+  // Save the WS from the current foreground
+  const ws = entry.ws;
+
+  // Stop the current foreground (may have just been created by parkSession)
   if (entry.session) {
     try { await entry.session.disconnect(); } catch { /* ignore */ }
   }
-  // Stop the current foreground client
   try { await entry.client.stop(); } catch { /* ignore */ }
 
-  // Swap the background entry's client+session back to foreground
-  entry.client = bg.entry.client;
-  entry.session = bg.entry.session;
-  entry.sdkSessionId = bg.sdkSessionId;
-  entry.model = bg.model;
-  entry.mode = bg.entry.mode;
-  entry.isProcessing = bg.status === 'running';
+  // Restore the WS on the background entry — its wired handlers will now
+  // send to the WebSocket again instead of buffering
+  bg.entry.ws = ws;
 
-  // Restore the WS reference so poolSend sends to the client again
-  bg.entry.ws = entry.ws;
+  // Transfer remaining background sessions to the restored entry
+  for (const [id, bgSession] of entry.backgroundSessions) {
+    if (id !== sessionId) {
+      bg.entry.backgroundSessions.set(id, bgSession);
+    }
+  }
+  entry.backgroundSessions.clear();
 
-  const buffered = bg.entry.messageBuffer;
-  entry.backgroundSessions.delete(sessionId);
-  return buffered;
+  // Grab and clear the buffered messages for replay
+  const buffered = bg.entry.messageBuffer.splice(0);
+
+  // Replace in the session pool
+  sessionPool.set(poolKey, bg.entry);
+
+  return { newEntry: bg.entry, buffered };
 }
 
-/** Wire event-based status notifications for a background session */
-function wireBackgroundStatusNotifications(foreground: PoolEntry, bg: BackgroundSession): void {
+/** Wire event-based status notifications for a background session.
+ * Uses poolKey to look up the current foreground entry at notification time,
+ * so notifications survive further park/unpark cycles.
+ */
+function wireBackgroundStatusNotifications(poolKey: string, bg: BackgroundSession): void {
   const session = bg.entry.session;
   if (!session) return;
 
-  // Listen for terminal events to update status and notify foreground
+  const sendStatus = () => {
+    const current = sessionPool.get(poolKey);
+    if (current) sendBackgroundStatus(current, bg);
+  };
+
   session.on('assistant.turn_end', () => {
     bg.status = 'completed';
-    sendBackgroundStatus(foreground, bg);
+    sendStatus();
   });
   session.on('session.idle', () => {
     bg.status = 'completed';
-    sendBackgroundStatus(foreground, bg);
+    sendStatus();
   });
   session.on('session.task_complete', () => {
     bg.status = 'completed';
-    sendBackgroundStatus(foreground, bg);
+    sendStatus();
   });
   session.on('session.error', () => {
     bg.status = 'errored';
-    sendBackgroundStatus(foreground, bg);
+    sendStatus();
   });
   session.on('session.title_changed', (event: any) => {
     bg.title = event.data?.title ?? bg.title;
-    sendBackgroundStatus(foreground, bg);
+    sendStatus();
   });
   session.on('session.shutdown', () => {
-    foreground.backgroundSessions.delete(bg.sdkSessionId);
+    const current = sessionPool.get(poolKey);
+    if (current) {
+      current.backgroundSessions.delete(bg.sdkSessionId);
+    }
     try { bg.entry.client.stop(); } catch { /* ignore */ }
   });
 }

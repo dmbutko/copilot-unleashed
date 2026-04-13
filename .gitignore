@@ -24,3 +24,5 @@ coverage/
 *.key
 src/lib/types/*.js
 src/lib/types/*.js.map
+.chat-state/
+.settings/

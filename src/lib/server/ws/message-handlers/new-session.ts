@@ -15,15 +15,17 @@ function rawTabId(ctx: MessageContext): string {
 }
 
 export async function handleNewSession(msg: any, ctx: MessageContext): Promise<void> {
-  const { connectionEntry, githubToken } = ctx;
+  let { connectionEntry } = ctx;
+  const { githubToken } = ctx;
 
   // Delete old persisted state before creating new session
   chatStateStore.delete(ctx.userLogin, rawTabId(ctx));
 
   // Park the current session in the background instead of destroying it
-  const parked = parkSession(connectionEntry, githubToken);
-  if (parked) {
-    debug(`[NEW] Parked session ${parked.sdkSessionId} in background (status: ${parked.status})`);
+  const parkResult = parkSession(connectionEntry, githubToken, ctx.poolKey);
+  if (parkResult) {
+    connectionEntry = parkResult.newEntry;
+    debug(`[NEW] Parked session ${parkResult.bgSession.sdkSessionId} in background (status: ${parkResult.bgSession.status})`);
   } else if (connectionEntry.session) {
     // parkSession returned null but session existed — it was disconnected as fallback
     debug(`[NEW] Session disconnected (could not park)`);

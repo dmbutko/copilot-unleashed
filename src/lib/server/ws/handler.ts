@@ -210,17 +210,20 @@ export function setupWebSocket(
       }
     }
 
-    // Capture entry reference for this connection's handlers
-    const connectionEntry = entry;
+    // NOTE: We do NOT capture `const connectionEntry = entry` here.
+    // After parkSession/unparkSession the pool entry for this poolKey changes,
+    // so every handler must do a fresh sessionPool.get(poolKey) lookup.
 
     ws.on('close', (code: number, reason: Buffer) => {
       console.log('[WS-SERVER] Disconnected:', poolKey, 'code:', code);
-      if (connectionEntry.ws === ws) {
-        connectionEntry.ws = null;
-        connectionEntry.ttlTimer = setTimeout(async () => {
+      const currentEntry = sessionPool.get(poolKey);
+      if (currentEntry && currentEntry.ws === ws) {
+        currentEntry.ws = null;
+        currentEntry.ttlTimer = setTimeout(async () => {
           // Re-verify the connection wasn't re-attached during the TTL window
-          if (connectionEntry.ws !== null) return;
-          await destroyPoolEntry(connectionEntry);
+          const e = sessionPool.get(poolKey);
+          if (!e || e.ws !== null) return;
+          await destroyPoolEntry(e);
           sessionPool.delete(poolKey);
         }, config.sessionPoolTtl);
       }
@@ -230,6 +233,15 @@ export function setupWebSocket(
     const rateLimitWindow: number[] = [];
 
     ws.on('message', async (raw) => {
+      // Fresh lookup — the pool entry may have been swapped by park/unpark
+      const connectionEntry = sessionPool.get(poolKey);
+      if (!connectionEntry) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session not found. Please refresh.' }));
+        }
+        return;
+      }
+
       try {
         const msg = JSON.parse(raw.toString());
         debug('[WS-SERVER] Message from', userLogin, ':', msg.type);
@@ -269,10 +281,12 @@ export function setupWebSocket(
         }
       } catch (err: any) {
         console.error('WS message error:', err.message);
-        connectionEntry.isProcessing = false;
+        // Fresh lookup in case the handler swapped the pool entry before throwing
+        const errEntry = sessionPool.get(poolKey) || connectionEntry;
+        errEntry.isProcessing = false;
         const errMsg = err?.message || 'An internal error occurred';
         const isTimeout = typeof errMsg === 'string' && errMsg.toLowerCase().includes('timeout');
-        poolSend(connectionEntry, {
+        poolSend(errEntry, {
           type: 'error',
           message: isTimeout
             ? `Request timed out. The model took too long to respond — try again or start a new session. (${errMsg})`
