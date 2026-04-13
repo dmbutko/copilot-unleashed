@@ -219,7 +219,9 @@ export function wireSessionEvents(
     poolSend(entry, { type: 'subagent_deselected', agentName: event.data?.agentName });
   });
   session.on('session.model_change', (event: any) => {
-    poolSend(entry, { type: 'model_changed', model: event.data?.model || event.data?.newModel, source: 'sdk' });
+    const newModel = event.data?.model || event.data?.newModel;
+    entry.model = newModel || entry.model;
+    poolSend(entry, { type: 'model_changed', model: newModel, source: 'sdk' });
   });
   session.on('elicitation.requested', (event: any) => {
     poolSend(entry, { type: 'elicitation_requested', question: event.data?.question, choices: event.data?.choices, allowFreeform: event.data?.allowFreeform });

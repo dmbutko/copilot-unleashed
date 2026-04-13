@@ -82,6 +82,7 @@ export async function handleSetModel(msg: any, ctx: MessageContext): Promise<voi
     await connectionEntry.session.setModel(newModel,
       connectionEntry.reasoningEffort ? { reasoningEffort: connectionEntry.reasoningEffort } : undefined
     );
+    connectionEntry.model = newModel;
     // Note: model_changed is sent by the SDK event handler (session.model_change)
   } catch (err: any) {
     console.error('Model change error:', err.message);

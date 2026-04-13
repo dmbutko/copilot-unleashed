@@ -115,6 +115,18 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
       // Non-critical: mode will default to interactive on client
     }
 
+    // Read the resumed session's model from the SDK
+    let resumedModel = 'gpt-4.1';
+    try {
+      const modelResult = await connectionEntry.session.rpc.model.getCurrent();
+      if (modelResult?.modelId) {
+        resumedModel = modelResult.modelId;
+      }
+    } catch {
+      // Non-critical: model will use default
+    }
+    connectionEntry.model = resumedModel;
+
     // Restore the plan INTO the SDK so the agent's tools can access it
     if (detail?.plan) {
       try {
@@ -140,7 +152,7 @@ export async function handleResumeSession(msg: any, ctx: MessageContext): Promis
       const turns = loadSessionTurns(sessionId);
       if (turns.length > 0) {
         debug(`[RESUME] Loaded ${turns.length} messages from session-store.db for ${sessionId}`);
-        const resolvedModel = msg.model || 'gpt-4.1';
+        const resolvedModel = msg.model || resumedModel;
         poolSend(connectionEntry, {
           type: 'cold_resume',
           messages: turns,
