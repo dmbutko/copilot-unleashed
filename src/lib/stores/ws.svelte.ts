@@ -34,9 +34,18 @@ const TAB_ID = typeof localStorage !== 'undefined'
     })()
   : crypto.randomUUID();
 
+export interface BackgroundSessionInfo {
+  sessionId: string;
+  status: 'running' | 'completed' | 'errored';
+  title?: string;
+  model?: string;
+  bufferedCount: number;
+}
+
 export interface WsStore {
   readonly connectionState: ConnectionState;
   readonly sessionReady: boolean;
+  readonly backgroundSessions: Map<string, BackgroundSessionInfo>;
 
   connect(): void;
   disconnect(): void;
@@ -88,6 +97,7 @@ export function createWsStore(): WsStore {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
   let lastSeq = -1;
+  let backgroundSessions = $state(new Map<string, BackgroundSessionInfo>());
 
   // ── Internal helpers ────────────────────────────────────────────────────
 
@@ -104,6 +114,28 @@ export function createWsStore(): WsStore {
     }
     if (msg.type === 'session_reconnected') {
       sessionReady = msg.hasSession;
+    }
+
+    // Track background session status
+    if (msg.type === 'background_session_status') {
+      const info: BackgroundSessionInfo = {
+        sessionId: msg.sessionId,
+        status: msg.status,
+        title: msg.title,
+        model: msg.model,
+        bufferedCount: msg.bufferedCount,
+      };
+      backgroundSessions = new Map(backgroundSessions).set(msg.sessionId, info);
+    }
+
+    // Remove from background map when resumed into foreground
+    if (msg.type === 'session_resumed' && 'sessionId' in msg) {
+      const sid = (msg as any).sessionId as string;
+      if (backgroundSessions.has(sid)) {
+        const next = new Map(backgroundSessions);
+        next.delete(sid);
+        backgroundSessions = next;
+      }
     }
 
     for (const handler of messageHandlers) {
@@ -489,6 +521,7 @@ export function createWsStore(): WsStore {
   return {
     get connectionState() { return connectionState; },
     get sessionReady() { return sessionReady; },
+    get backgroundSessions() { return backgroundSessions; },
 
     connect,
     disconnect,

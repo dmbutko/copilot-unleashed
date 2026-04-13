@@ -18,6 +18,21 @@ const CONTROL_MESSAGE_TYPES = new Set([
 /** Threshold for considering a client connection stale (no ping received). */
 export const CLIENT_STALE_MS = 35_000;
 
+/** Maximum number of background sessions per pool entry (tab). */
+const MAX_BACKGROUND_SESSIONS = 3;
+
+export type BackgroundSessionStatus = 'running' | 'completed' | 'errored';
+
+export interface BackgroundSession {
+  session: any;
+  sdkSessionId: string;
+  model: string | null;
+  title: string | null;
+  status: BackgroundSessionStatus;
+  messageBuffer: Record<string, unknown>[];
+  parkedAt: number;
+}
+
 export interface PoolEntry {
   client: CopilotClient;
   session: any;
@@ -49,6 +64,8 @@ export interface PoolEntry {
   workspaceCwd: string | null;
   /** Latest git root reported by the SDK session */
   workspaceGitRoot: string | null;
+  /** Background sessions that continue processing while user works in another session */
+  backgroundSessions: Map<string, BackgroundSession>;
 }
 
 export const sessionPool = new Map<string, PoolEntry>();
@@ -74,6 +91,7 @@ export function createPoolEntry(client: CopilotClient, ws: WebSocket): PoolEntry
     lastPingAt: Date.now(),
     workspaceCwd: null,
     workspaceGitRoot: null,
+    backgroundSessions: new Map(),
   };
 }
 
@@ -86,6 +104,11 @@ export async function destroyPoolEntry(entry: PoolEntry): Promise<void> {
     try { await entry.session.disconnect(); } catch { /* ignore */ }
     entry.session = null;
   }
+  // Clean up all background sessions
+  for (const bg of entry.backgroundSessions.values()) {
+    try { await bg.session.disconnect(); } catch { /* ignore */ }
+  }
+  entry.backgroundSessions.clear();
   entry.userInputResolve = null;
   entry.permissionResolves.clear();
   entry.pendingUserInputPrompt = null;
@@ -117,6 +140,126 @@ export function poolSend(entry: PoolEntry, data: Record<string, unknown>): void 
       }
     }
     entry.messageBuffer.push(seqData);
+  }
+}
+
+/**
+ * Move the current foreground session to the background.
+ * The session keeps processing and its events buffer into its own array.
+ * Returns the background session if parked, or null if there was nothing to park.
+ */
+export function parkSession(entry: PoolEntry): BackgroundSession | null {
+  if (!entry.session || !entry.sdkSessionId) return null;
+
+  const bg: BackgroundSession = {
+    session: entry.session,
+    sdkSessionId: entry.sdkSessionId,
+    model: entry.model,
+    title: null,
+    status: entry.isProcessing ? 'running' : 'completed',
+    messageBuffer: [],
+    parkedAt: Date.now(),
+  };
+
+  entry.backgroundSessions.set(entry.sdkSessionId, bg);
+  entry.session = null;
+  entry.sdkSessionId = null;
+  entry.userInputResolve = null;
+  entry.permissionResolves.clear();
+  entry.pendingUserInputPrompt = null;
+  entry.pendingPermissionPrompts.clear();
+  entry.isProcessing = false;
+
+  // Evict oldest completed background sessions if over the cap
+  if (entry.backgroundSessions.size > MAX_BACKGROUND_SESSIONS) {
+    evictOldestBackground(entry);
+  }
+
+  return bg;
+}
+
+/**
+ * Move a background session back to the foreground.
+ * Returns the buffered messages to replay to the client, or null if not found.
+ */
+export async function unparkSession(entry: PoolEntry, sessionId: string): Promise<Record<string, unknown>[] | null> {
+  const bg = entry.backgroundSessions.get(sessionId);
+  if (!bg) return null;
+
+  // Disconnect the current foreground session if any
+  if (entry.session) {
+    parkSession(entry);
+  }
+
+  entry.session = bg.session;
+  entry.sdkSessionId = bg.sdkSessionId;
+  entry.model = bg.model;
+  entry.isProcessing = bg.status === 'running';
+
+  const buffered = bg.messageBuffer;
+  entry.backgroundSessions.delete(sessionId);
+  return buffered;
+}
+
+/** Buffer a message for a background session and notify the foreground WS of status changes. */
+export function backgroundSend(entry: PoolEntry, sessionId: string, data: Record<string, unknown>): void {
+  const bg = entry.backgroundSessions.get(sessionId);
+  if (!bg) return;
+
+  bg.messageBuffer.push(data);
+
+  // Update status on terminal events
+  const type = data.type as string;
+  if (type === 'turn_end' || type === 'session_idle' || type === 'task_complete') {
+    bg.status = 'completed';
+  } else if (type === 'error') {
+    bg.status = 'errored';
+  } else if (type === 'title_changed' && typeof data.title === 'string') {
+    bg.title = data.title;
+  }
+
+  // Send status update to the foreground WS on terminal events
+  if (type === 'turn_end' || type === 'session_idle' || type === 'task_complete' || type === 'error' || type === 'title_changed') {
+    poolSend(entry, {
+      type: 'background_session_status',
+      sessionId,
+      status: bg.status,
+      title: bg.title,
+      model: bg.model,
+      bufferedCount: bg.messageBuffer.length,
+    });
+  }
+}
+
+/** Evict oldest completed background sessions to stay within the cap. */
+function evictOldestBackground(entry: PoolEntry): void {
+  while (entry.backgroundSessions.size > MAX_BACKGROUND_SESSIONS) {
+    // Prefer evicting completed/errored sessions over running ones
+    let evictId: string | null = null;
+    let evictTime = Infinity;
+
+    for (const [id, bg] of entry.backgroundSessions) {
+      if (bg.status !== 'running' && bg.parkedAt < evictTime) {
+        evictId = id;
+        evictTime = bg.parkedAt;
+      }
+    }
+    // If all are running, evict the oldest running one
+    if (!evictId) {
+      for (const [id, bg] of entry.backgroundSessions) {
+        if (bg.parkedAt < evictTime) {
+          evictId = id;
+          evictTime = bg.parkedAt;
+        }
+      }
+    }
+    if (!evictId) break;
+
+    const bg = entry.backgroundSessions.get(evictId);
+    if (bg) {
+      try { bg.session.disconnect(); } catch { /* ignore */ }
+    }
+    entry.backgroundSessions.delete(evictId);
   }
 }
 

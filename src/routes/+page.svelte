@@ -316,6 +316,7 @@
       quotaSnapshots={chatStore.quotaSnapshots}
       sessionTotals={chatStore.sessionTotals}
       sessions={chatStore.sessions}
+      backgroundSessions={wsStore.backgroundSessions}
       onClose={() => sidebarOpen = false}
       onNewChat={handleNewChat}
       onOpenSessions={handleOpenSessions}

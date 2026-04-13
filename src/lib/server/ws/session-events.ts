@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { debug } from '../logger.js';
-import { poolSend, isClientUnreachable, type PoolEntry } from './session-pool.js';
+import { poolSend, backgroundSend, isClientUnreachable, type PoolEntry } from './session-pool.js';
 import { normalizeQuotaSnapshots } from './quota.js';
 import { getSessionStateDir } from '../copilot/session-metadata.js';
 import { chatStateStore } from '../chat-state-singleton.js';
@@ -283,4 +283,57 @@ export function wireSessionEvents(
 
   // Catch-all: log unhandled event types for debugging / future audit
   session.on(createCatchAllHandler(entry, HANDLED_EVENT_TYPES));
+}
+
+/**
+ * Rewire a session's events to buffer into its background session entry.
+ * Only wires events that matter for background processing (content, status, errors).
+ * The foreground WS is notified of status changes via backgroundSend.
+ */
+export function wireBackgroundSessionEvents(
+  session: any,
+  entry: PoolEntry,
+  sessionId: string,
+): void {
+  const send = (data: Record<string, unknown>) => backgroundSend(entry, sessionId, data);
+
+  session.removeAllListeners();
+
+  session.on('assistant.message_delta', (event: any) => {
+    send({ type: 'delta', content: event.data.deltaContent });
+  });
+  session.on('assistant.reasoning_delta', (event: any) => {
+    send({ type: 'reasoning_delta', content: event.data.deltaContent, reasoningId: event.data.reasoningId });
+  });
+  session.on('assistant.turn_start', () => { send({ type: 'turn_start' }); });
+  session.on('assistant.turn_end', () => { send({ type: 'turn_end' }); });
+  session.on('assistant.usage', (event: any) => {
+    send({ type: 'usage', inputTokens: event.data.inputTokens, outputTokens: event.data.outputTokens, totalTokens: event.data.totalTokens });
+  });
+  session.on('tool.execution_start', (event: any) => {
+    send({ type: 'tool_start', toolCallId: event.data.toolCallId, toolName: event.data.toolName });
+  });
+  session.on('tool.execution_complete', (event: any) => {
+    send({ type: 'tool_end', toolCallId: event.data.toolCallId });
+  });
+  session.on('tool.execution_progress', (event: any) => {
+    send({ type: 'tool_progress', toolCallId: event.data.toolCallId, message: event.data.message });
+  });
+  session.on('session.error', (event: any) => {
+    send({ type: 'error', message: event.data.message });
+  });
+  session.on('session.title_changed', (event: any) => {
+    send({ type: 'title_changed', title: event.data.title });
+  });
+  session.on('session.idle', (event: any) => {
+    send({ type: 'session_idle', backgroundTasks: event.data?.backgroundTasks });
+  });
+  session.on('session.task_complete', (event: any) => {
+    send({ type: 'task_complete', summary: event.data?.summary });
+  });
+  session.on('session.shutdown', (event: any) => {
+    send({ type: 'session_shutdown' });
+    // Clean up: remove from background sessions map
+    entry.backgroundSessions.delete(sessionId);
+  });
 }

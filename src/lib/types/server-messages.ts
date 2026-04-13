@@ -476,6 +476,15 @@ export interface SessionsChangedMessage {
   type: 'sessions_changed';
 }
 
+export interface BackgroundSessionStatusMessage {
+  type: 'background_session_status';
+  sessionId: string;
+  status: 'running' | 'completed' | 'errored';
+  title?: string;
+  model?: string;
+  bufferedCount: number;
+}
+
 export interface InstructionsListMessage {
   type: 'instructions_list';
   instructions: InstructionInfo[];
@@ -569,6 +578,7 @@ export type ServerMessage =
   | McpServersListMessage
   | McpServerToggledMessage
   | SessionsChangedMessage
+  | BackgroundSessionStatusMessage
   | InstructionsListMessage
   | PromptsListMessage
   | PromptContentMessage;
